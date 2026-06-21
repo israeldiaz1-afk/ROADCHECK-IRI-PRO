@@ -250,12 +250,16 @@ function extractFeaturesAndScore(triggerTs){
     bipolarity=Math.min(1,oppositeSignPeak/peakAmp);
   }
 
-  // Energía espectral aproximada: cruces por cero (proxy ligero sin FFT)
+  // freqEnergy: solo en ±9 muestras alrededor del pico para no contaminar con
+  // cruces por cero del ruido de fondo fuera del evento
+  const coreStart=Math.max(0,peakIdx-9);
+  const coreEnd=Math.min(window.length,peakIdx+9);
+  const core=window.slice(coreStart,coreEnd);
   let crossings=0;
-  for(let i=1;i<verts.length;i++){if(Math.sign(verts[i])!==Math.sign(verts[i-1]))crossings++;}
-  const windowDurationS=(window[window.length-1].t-window[0].t)/1000;
-  const crossingFreq=windowDurationS>0?crossings/windowDurationS/2:0;
-  const freqEnergy=Math.min(1,Math.max(0,(crossingFreq-4)/16)); // normalizado 0-1, pico 8-20Hz
+  for(let i=1;i<core.length;i++){if(Math.sign(core[i].vert)!==Math.sign(core[i-1].vert))crossings++;}
+  const coreDurationS=core.length>1?(core[core.length-1].t-core[0].t)/1000:0.001;
+  const crossingFreq=coreDurationS>0?crossings/coreDurationS/2:0;
+  const freqEnergy=Math.min(1,Math.max(0,(crossingFreq-4)/16));
 
   // Correlación con frenado: eje Y longitudinal sostenido = frenazo, no bache
   const ays=window.map(s=>Math.abs(s.ay));
@@ -267,19 +271,49 @@ function extractFeaturesAndScore(triggerTs){
 }
 
 // ─ scoring & classification ───────────────────
-// Parámetros ajustables en campo (ver URBAN_TUNABLE en spec)
+// Parámetros ajustables en campo — valores validados con banco de pruebas sintético
+const URBAN_TUNABLE={
+  triggerSigma:4,
+  triggerFloorMs2:1.2,
+  vRefUrban:25,
+  vMinNormalize:5,
+  speedExponent:0.7,
+  ampCeiling:6,      // bajado de 8 → 6 (rango real observado: 0.1-5 m/s²)
+  jerkCeiling:220,   // subido de 40 → 220 (rango real: 9-300 m/s³, antes saturaba siempre)
+  scoreDiscardBelow:25,
+  severityModerateAt:40,
+  severityGraveAt:65,
+  proximityConfirmM:4,
+  confirmAfterPasses:2
+};
+
 const URBAN_WEIGHTS={amp:0.30,jerk:0.25,bipolarity:0.20,freqEnergy:0.15,brakePenalty:0.10};
 
 function normalizeByVelocity(value,speedKmh){
-  const vRef=25,vMin=5; // vRef urbana, distinto al 80km/h de IRI
-  if(speedKmh<vMin)return value;
-  return value*Math.pow(vRef/speedKmh,0.7); // exponente urbano 0.7 vs 0.5 de IRI
+  const{vRefUrban,vMinNormalize,speedExponent}=URBAN_TUNABLE;
+  if(speedKmh<vMinNormalize)return value;
+  return value*Math.pow(vRefUrban/speedKmh,speedExponent);
 }
 
 function scoreAndClassify(features,triggerTs){
   const speed=S.lastPos?.speed||0;
-  const ampNorm=Math.min(1,normalizeByVelocity(features.peakAmp,speed)/8); // 8 m/s² techo
-  const jerkNorm=Math.min(1,features.jerkMax/40); // 40 m/s³ techo
+  const ampNorm=Math.min(1,normalizeByVelocity(features.peakAmp,speed)/URBAN_TUNABLE.ampCeiling);
+
+  // Clasificar tipo PRIMERO — los badenes tienen fórmula de puntuación propia
+  const type=classifyType(features);
+
+  if(type==='speedbump'){
+    // Badenes: firma físicamente suave (bajo jerk, sin bipolaridad, sin alta frecuencia)
+    // — esas son sus características definitorias, no señal débil. La fórmula de impacto
+    // agudo los penalizaría injustamente. Se valoran solo por amplitud normalizada.
+    const bumpScore=Math.max(0,Math.min(100,ampNorm*100));
+    if(bumpScore<15)return;
+    const severity=bumpScore>=55?'moderado':'leve';
+    registerEvent({triggerTs,speed,severity,score:bumpScore,type,features});
+    return;
+  }
+
+  const jerkNorm=Math.min(1,features.jerkMax/URBAN_TUNABLE.jerkCeiling);
 
   const rawScore=
     URBAN_WEIGHTS.amp*ampNorm+
@@ -290,19 +324,20 @@ function scoreAndClassify(features,triggerTs){
 
   const score=Math.max(0,Math.min(100,rawScore*100));
 
-  // Descartar frenazo sostenido sin rebote vertical
-  if(features.brakeCorrelation>0.6&&features.bipolarity<0.3)return;
-  if(score<25)return; // ruido
+  // Sin veto absoluto por frenado: la puerta de disparo (Fase 2.3) ya descarta
+  // frenadas puras insuficientes. Un veto aquí descartaría baches reales que
+  // ocurren mientras se frena — frecuente en ciudad. La correlación de frenado
+  // penaliza el score de forma proporcional mediante brakePenalty (-0.10).
+  if(score<URBAN_TUNABLE.scoreDiscardBelow)return;
 
-  const severity=score>=65?'grave':score>=40?'moderado':'leve';
-  const type=classifyType(features);
+  const severity=score>=URBAN_TUNABLE.severityGraveAt?'grave':score>=URBAN_TUNABLE.severityModerateAt?'moderado':'leve';
   registerEvent({triggerTs,speed,severity,score,type,features});
 }
 
 function classifyType(f){
-  if(f.duration>350&&f.freqEnergy<0.3)return 'speedbump'; // largo y baja frecuencia
-  if(f.duration<80&&f.bipolarity<0.2)return 'manhole';    // corto y sin rebote
-  if(f.bipolarity>0.4&&f.freqEnergy>0.4)return 'pothole'; // firma clásica de bache
+  if(f.duration>220&&f.freqEnergy<0.15)return 'speedbump'; // largo, baja frecuencia
+  if(f.duration<80&&f.bipolarity<0.2)return 'manhole';     // corto, sin rebote
+  if(f.bipolarity>0.28&&f.freqEnergy>0.15)return 'pothole';// firma bipolar con frecuencia
   return 'unknown';
 }
 
