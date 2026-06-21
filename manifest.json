@@ -1,0 +1,25 @@
+{
+  "name": "Roadcheck IRI",
+  "short_name": "RoadcheckIRI",
+  "description": "Medición profesional del Índice de Regularidad Internacional (IRI) en carreteras.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0a0f16",
+  "theme_color": "#f59e0b",
+  "orientation": "portrait-primary",
+  "lang": "es",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='36' fill='%230a0f16'/%3E%3Crect x='20' y='110' width='152' height='10' rx='5' fill='%23334155'/%3E%3Crect x='20' y='126' width='152' height='10' rx='5' fill='%23334155'/%3E%3Crect x='20' y='142' width='152' height='10' rx='5' fill='%23334155'/%3E%3Cpolyline points='20,108 55,75 90,95 125,55 155,72' fill='none' stroke='%2310b981' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='155' cy='72' r='8' fill='%23f59e0b'/%3E%3Ctext x='96' y='42' font-size='22' font-weight='900' text-anchor='middle' font-family='Arial' fill='%23f59e0b'%3EROADCHECK%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230a0f16'/%3E%3Crect x='50' y='290' width='412' height='28' rx='14' fill='%23334155'/%3E%3Crect x='50' y='334' width='412' height='28' rx='14' fill='%23334155'/%3E%3Crect x='50' y='378' width='412' height='28' rx='14' fill='%23334155'/%3E%3Cpolyline points='50,285 145,195 240,250 335,145 412,190' fill='none' stroke='%2310b981' stroke-width='16' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='412' cy='190' r='20' fill='%23f59e0b'/%3E%3Ctext x='256' y='108' font-size='58' font-weight='900' text-anchor='middle' font-family='Arial' fill='%23f59e0b'%3EROADCHECK%3C/text%3E%3Ctext x='256' y='152' font-size='34' font-weight='700' text-anchor='middle' font-family='Arial' fill='%2364748b'%3EIRI PRO%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
