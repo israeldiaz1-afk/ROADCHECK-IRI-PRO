@@ -181,7 +181,89 @@ function motionFB(){
   window.addEventListener('devicemotion',e=>{const a=e.accelerationIncludingGravity;if(a)onRaw(a.x||0,a.y||0,a.z||0);},{passive:true});
   S.sensorOK=true;setChip('cSEN','dSEN','lSEN','warn','#F59E0B','SEN NCAL');
 }
-function onRaw(x,y,z){if(!S.sensorOK)return;if(S.calPhase>0){doCalSample(x,y,z);return;}if(!S.calibrated)return;const g=S.grav;onVert(Math.abs(x*g.x+y*g.y+z*g.z-S.gravMag));}
+function onRaw(x,y,z){
+  if(!S.sensorOK)return;
+  if(S.calPhase>0){doCalSample(x,y,z);return;}
+  if(!S.calibrated)return;
+  const g=S.grav;
+  const raw=Math.abs(x*g.x+y*g.y+z*g.z-S.gravMag);
+  if(S.mode==='urban'){feedUrbanBuffer(x,y,z,Date.now());}
+  onVert(raw);
+}
+
+// ─ urban buffer ───────────────────────────────
+function feedUrbanBuffer(x,y,z,t){
+  const g=S.grav;
+  const vert=x*g.x+y*g.y+z*g.z-S.gravMag; // con signo, para forma de onda
+  S.urbanBuf.push({t,ax:x,ay:y,az:z,vert});
+  if(S.urbanBuf.length>S.urbanBufMax)S.urbanBuf.shift();
+  updateNoiseBaseline(vert);
+  detectEvent();
+}
+
+function updateNoiseBaseline(vert){
+  S.noiseBaseline.samples.push(Math.abs(vert));
+  if(S.noiseBaseline.samples.length>300)S.noiseBaseline.samples.shift();
+  S.noiseBaseline.mean=S.noiseBaseline.samples.reduce((a,b)=>a+b,0)/S.noiseBaseline.samples.length;
+  const variance=S.noiseBaseline.samples.reduce((a,b)=>a+(b-S.noiseBaseline.mean)**2,0)/S.noiseBaseline.samples.length;
+  S.noiseBaseline.std=Math.sqrt(variance);
+}
+
+function detectEvent(){
+  if(S.urbanBuf.length<20)return;
+  const latest=S.urbanBuf[S.urbanBuf.length-1];
+  const dynamicThreshold=S.noiseBaseline.mean+4*S.noiseBaseline.std; // 4-sigma
+  if(Math.abs(latest.vert)<Math.max(dynamicThreshold,1.2))return; // 1.2 m/s² suelo absoluto
+  if(S._lastEventTs&&latest.t-S._lastEventTs<300)return; // anti-rebote 300ms
+  extractFeaturesAndScore(latest.t);
+}
+
+function extractFeaturesAndScore(triggerTs){
+  const window=S.urbanBuf.filter(s=>Math.abs(s.t-triggerTs)<=200);
+  if(window.length<6)return;
+
+  const verts=window.map(s=>s.vert);
+  const peakAmp=Math.max(...verts.map(Math.abs));
+
+  // Jerk: derivada discreta de la aceleración vertical
+  let jerkMax=0;
+  for(let i=1;i<window.length;i++){
+    const dt=(window[i].t-window[i-1].t)/1000;
+    if(dt<=0)continue;
+    const jerk=Math.abs((window[i].vert-window[i-1].vert)/dt);
+    jerkMax=Math.max(jerkMax,jerk);
+  }
+
+  // Duración: tiempo con |vert| > mitad del pico
+  const halfPeak=peakAmp*0.5;
+  const above=window.filter(s=>Math.abs(s.vert)>halfPeak);
+  const duration=above.length>1?(above[above.length-1].t-above[0].t):0;
+
+  // Bipolaridad: caída seguida de rebote de signo opuesto (firma de bache)
+  let bipolarity=0;
+  const peakIdx=window.findIndex(s=>Math.abs(s.vert)===peakAmp);
+  if(peakIdx>=0&&peakIdx<window.length-3){
+    const peakSign=Math.sign(window[peakIdx].vert);
+    const after=window.slice(peakIdx+1,peakIdx+6);
+    const oppositeSignPeak=Math.max(...after.map(s=>peakSign>0?-s.vert:s.vert),0);
+    bipolarity=Math.min(1,oppositeSignPeak/peakAmp);
+  }
+
+  // Energía espectral aproximada: cruces por cero (proxy ligero sin FFT)
+  let crossings=0;
+  for(let i=1;i<verts.length;i++){if(Math.sign(verts[i])!==Math.sign(verts[i-1]))crossings++;}
+  const windowDurationS=(window[window.length-1].t-window[0].t)/1000;
+  const crossingFreq=windowDurationS>0?crossings/windowDurationS/2:0;
+  const freqEnergy=Math.min(1,Math.max(0,(crossingFreq-4)/16)); // normalizado 0-1, pico 8-20Hz
+
+  // Correlación con frenado: eje Y longitudinal sostenido = frenazo, no bache
+  const ays=window.map(s=>Math.abs(s.ay));
+  const ayAvg=ays.reduce((a,b)=>a+b,0)/ays.length;
+  const brakeCorrelation=Math.min(1,ayAvg/3); // 3 m/s² ~ frenada fuerte
+
+  const features={peakAmp,jerkMax,duration,bipolarity,freqEnergy,brakeCorrelation};
+  scoreAndClassify(features,triggerTs);
+}
 function showIOSPerm(){$('sensorPermModal')?.classList.remove('hidden');}
 function grantIOS(){$('sensorPermModal')?.classList.add('hidden');DeviceMotionEvent.requestPermission().then(s=>{if(s==='granted'){S.sensorOK=true;$('btnIOS')?.classList.add('hidden');tryAccel();startCal();toast('Permiso concedido');}else toast('Permiso denegado');});}
 
