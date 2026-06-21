@@ -24,6 +24,7 @@ const S={
   urbanEvents:[],
   noiseBaseline:{mean:0,std:0.05,samples:[]},
   _lastEventTs:null,
+  groundTruth:[],
   mapMain:null,mapMeas:null,mapVisor:null,mapDetail:null,
   lineMain:null,lineMeas:null,mkMain:null,mkMeas:null,mkDetail:null,
 };
@@ -604,6 +605,7 @@ function startMeasurement(){
   if(S.mode==='urban'){
     // Modo urbano: resetear eventos y buffers
     S.urbanEvents=[];S.urbanBuf=[];S._lastEventTs=null;
+    S.groundTruth=[];
     S.noiseBaseline={mean:0,std:0.05,samples:[]};
     set('uEventCount','0');set('uGraveCount','0');set('uModCount','0');
     const lEl=$('uLastEvent');if(lEl)lEl.textContent='Sin eventos detectados aún';
@@ -642,6 +644,8 @@ function stopUrbanSession(){
   if(S.urbanEvents.length===0){toast('Sin eventos detectados en esta sesión');return;}
   mergeEventsIntoStorage(S.urbanEvents);
   toast(`✅ ${S.urbanEvents.length} eventos guardados`);
+  // Si hay ground truth, mostrar métricas de validación automáticamente
+  if(S.groundTruth&&S.groundTruth.length>0)showValidationResults();
 }
 function confirmSave(){
   if(!S.pendingRoute)return;
@@ -924,6 +928,49 @@ const c2=new Chart(document.getElementById('c2'),{type:'line',plugins:[vl],data:
 function hl(i){const p=PTS[i];if(!p)return;if(!map.hasLayer(hlMk))hlMk.addTo(map);hlMk.setLatLng([p.lat,p.lon]);map.panTo([p.lat,p.lon]);c1._hl=i;c1.update('none');c2._hl=i;c2.update('none');document.getElementById('pi').innerHTML='Pto <span>#'+(i+1)+'<\/span> · Lat <span>'+p.lat.toFixed(5)+'<\/span> · Lon <span>'+p.lon.toFixed(5)+'<\/span> · Vel <span>'+p.speed+' km/h<\/span> · IRI_m <span style="color:#0EA5E9">'+p.iri_m.toFixed(3)+'<\/span> · IRI_c <span style="color:'+ic(p.iri_c)+'">'+p.iri_c.toFixed(3)+'<\/span>';}
 <\/script></body></html>`;
   dlBlob(html,'text/html','informe_roadcheck_'+r.id.slice(-6)+'.html');toast('Informe HTML exportado ✓');
+}
+
+// ─ urban validation (Fase 7) ──────────────────
+function markGroundTruth(){
+  if(!S.active||!S.lastPos){toast('Activa una sesión urbana primero');return;}
+  if(!S.groundTruth)S.groundTruth=[];
+  const gt={ts:Date.now(),lat:S.lastPos.lat,lon:S.lastPos.lon,speed:S.lastPos.speed||0};
+  S.groundTruth.push(gt);
+  toast('🏷️ Bache real marcado (#'+S.groundTruth.length+')');
+  // Marcador visual diferenciado
+  const map=S.mapMeas;
+  if(map)L.circleMarker([gt.lat,gt.lon],{radius:9,color:'#fff',weight:2,fillColor:'#10B981',fillOpacity:0.95}).addTo(map).bindTooltip('GT #'+S.groundTruth.length);
+}
+
+function computeValidationMetrics(detected,groundTruth,proximityM=5,proximityMs=2000){
+  let VP=0,FP=0,FN=0;
+  const usedGT=new Set();
+  detected.forEach(ev=>{
+    const match=groundTruth.find((gt,i)=>!usedGT.has(i)&&geo(ev.lat,ev.lon,gt.lat,gt.lon)<=proximityM&&Math.abs(ev.ts-gt.ts)<=proximityMs);
+    if(match){VP++;const idx=groundTruth.indexOf(match);usedGT.add(idx);}
+    else FP++;
+  });
+  FN=groundTruth.length-usedGT.size;
+  const precision=VP+FP>0?VP/(VP+FP):0;
+  const recall=VP+FN>0?VP/(VP+FN):0;
+  return{VP,FP,FN,precision,recall};
+}
+
+function showValidationResults(){
+  const gt=S.groundTruth||[];
+  if(!gt.length){toast('Sin ground truth marcado');return;}
+  const m=computeValidationMetrics(S.urbanEvents,gt);
+  const msg=`Validación:\nVP: ${m.VP} · FP: ${m.FP} · FN: ${m.FN}\nPrecisión: ${(m.precision*100).toFixed(1)}%\nRecall: ${(m.recall*100).toFixed(1)}%`;
+  alert(msg);
+}
+
+function exportValidationDataset(){
+  const gt=S.groundTruth||[];
+  if(!S.urbanEvents.length&&!gt.length){toast('Sin datos de validación');return;}
+  const m=gt.length?computeValidationMetrics(S.urbanEvents,gt):{VP:0,FP:0,FN:0,precision:0,recall:0};
+  const dataset={urbanEvents:S.urbanEvents,groundTruth:gt,comparisonResults:m,exportedAt:new Date().toISOString()};
+  dlBlob(JSON.stringify(dataset,null,2),'application/json','validation_dataset_'+Date.now().toString().slice(-6)+'.json');
+  toast('Dataset de validación exportado ✓');
 }
 
 // ─ urban exports ──────────────────────────────

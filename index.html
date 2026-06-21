@@ -435,6 +435,9 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 <div id="overlapModal" class="modal-bg hidden"><div class="modal"><div class="mh"></div><h3>Tramos Coincidentes</h3><p class="sub">Solapamientos detectados entre las rutas seleccionadas:</p><ul id="overlapList" class="ov-list"></ul><p style="font-size:.63rem;color:var(--dim);margin-top:5px;line-height:1.6">¿Combinar y promediar los valores IRI en los tramos coincidentes?</p><div class="modal-btns"><button class="btn btn-sec" onclick="resolveOverlap(false)">Por separado</button><button class="btn btn-pri" style="flex:1" onclick="resolveOverlap(true)">Sí, combinar</button></div></div></div>
 <div id="sensorPermModal" class="modal-bg hidden"><div class="modal"><div class="mh"></div><h3>Permiso de Movimiento</h3><p class="sub">iOS 13+ requiere permiso para acceder al acelerómetro.</p><button class="btn btn-pri" style="width:100%;padding:12px;margin-bottom:6px" onclick="grantIOS()">Conceder acceso</button><button class="btn btn-sec" style="width:100%" onclick="document.getElementById('sensorPermModal').classList.add('hidden')">Cancelar</button></div></div>
 
+<!-- BOTÓN FLOTANTE DE ETIQUETADO (Fase 7 — visible solo en modo urbano + sesión activa) -->
+<button class="urban-label-btn" id="urbanLabelBtn" onclick="markGroundTruth()">🏷️ Marcar bache real</button>
+
 <!-- MEASUREMENT OVERLAY -->
 <div id="meas-sc" class="hidden">
   <div class="m-hdr">
