@@ -926,6 +926,95 @@ function hl(i){const p=PTS[i];if(!p)return;if(!map.hasLayer(hlMk))hlMk.addTo(map
   dlBlob(html,'text/html','informe_roadcheck_'+r.id.slice(-6)+'.html');toast('Informe HTML exportado ✓');
 }
 
+// ─ urban exports ──────────────────────────────
+function exportUrbanEventsXLSX(){
+  let stored;
+  try{stored=JSON.parse(localStorage.getItem('rc_urban_events')||'[]');}catch(e){stored=[];}
+  if(!stored.length){toast('Sin eventos urbanos para exportar');return;}
+  loadXLSX(()=>{
+    const wb=XLSX.utils.book_new();
+    const rows=[['#','Fecha','Lat','Lon','Tipo','Severidad','Score','Confirmaciones','Velocidad (km/h)','Confirmado']];
+    stored.forEach((ev,i)=>{
+      rows.push([
+        i+1,fmtD(ev.ts),
+        (ev.lat||0).toFixed(7),(ev.lon||0).toFixed(7),
+        ev.type,ev.severity,
+        (ev.score||0).toFixed(1),
+        ev.confirmCount||1,
+        (ev.speed||0).toFixed(1),
+        ev.confirmed?'Sí':'No'
+      ]);
+    });
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:4},{wch:18},{wch:13},{wch:13},{wch:12},{wch:10},{wch:8},{wch:15},{wch:16},{wch:12}];
+    XLSX.utils.book_append_sheet(wb,ws,'Eventos');
+    const summary=[['ROADCHECK IRI — EVENTOS URBANOS'],[''],
+      ['Total eventos',stored.length],
+      ['Graves',stored.filter(e=>e.severity==='grave').length],
+      ['Moderados',stored.filter(e=>e.severity==='moderado').length],
+      ['Leves',stored.filter(e=>e.severity==='leve').length],
+      ['% Confirmados',(stored.filter(e=>e.confirmed).length/stored.length*100).toFixed(1)+'%'],
+    ];
+    const ws2=XLSX.utils.aoa_to_sheet(summary);
+    ws2['!cols']=[{wch:22},{wch:14}];
+    XLSX.utils.book_append_sheet(wb,ws2,'Resumen');
+    XLSX.writeFile(wb,'urban_eventos_'+Date.now().toString().slice(-6)+'.xlsx');
+    toast('Excel de eventos exportado ✓');
+  });
+}
+
+function exportUrbanEventsHTML(){
+  let stored;
+  try{stored=JSON.parse(localStorage.getItem('rc_urban_events')||'[]');}catch(e){stored=[];}
+  if(!stored.length){toast('Sin eventos urbanos para exportar');return;}
+  const total=stored.length;
+  const graves=stored.filter(e=>e.severity==='grave').length;
+  const mods=stored.filter(e=>e.severity==='moderado').length;
+  const leves=stored.filter(e=>e.severity==='leve').length;
+  const confirmed=stored.filter(e=>e.confirmed).length;
+  const pctConf=(total>0?(confirmed/total*100).toFixed(1):0)+'%';
+  const colors={leve:'#F59E0B',moderado:'#F97316',grave:'#EF4444'};
+  const eventsJson=JSON.stringify(stored.map(e=>({lat:e.lat,lon:e.lon,type:e.type,severity:e.severity,score:+(e.score||0).toFixed(1),confirmed:e.confirmed,confirmCount:e.confirmCount||1})));
+  const tableRows=stored.map((e,i)=>`<tr><td>${i+1}</td><td>${fmtD(e.ts)}</td><td>${e.lat.toFixed(5)}</td><td>${e.lon.toFixed(5)}</td><td>${e.type}</td><td style="color:${colors[e.severity]};font-weight:700">${e.severity}</td><td>${(e.score||0).toFixed(1)}</td><td>${e.confirmCount||1}</td><td>${(e.speed||0).toFixed(1)}</td><td>${e.confirmed?'✓':''}</td></tr>`).join('');
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eventos Urbanos — Roadcheck IRI</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;background:#05111F;color:#B8D0E4}.tb{display:flex;align-items:center;gap:10px;padding:9px 14px;background:#091829;border-bottom:1px solid rgba(14,165,233,.2);position:sticky;top:0;z-index:1000}.back{padding:6px 13px;background:rgba(14,165,233,.12);border:1px solid rgba(14,165,233,.25);border-radius:4px;color:#0EA5E9;font-size:.73rem;font-weight:700;cursor:pointer;letter-spacing:.5px;text-transform:uppercase}.rt{font-size:.82rem;font-weight:700;color:#0EA5E9;letter-spacing:1px;font-family:'Courier New',monospace;text-transform:uppercase}.c{padding:12px 12px 28px}h2{font-size:.67rem;text-transform:uppercase;letter-spacing:2px;color:#3A5F7A;margin-bottom:9px;font-family:'Courier New',monospace;padding-top:12px}.cards{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.card{background:#091829;border:1px solid rgba(14,165,233,.15);border-radius:6px;padding:9px 14px;flex:1;min-width:90px;text-align:center}.card .v{font-size:1.35rem;font-weight:700;font-family:'Courier New',monospace;color:#F59E0B}.card .l{font-size:.57rem;color:#3A5F7A;text-transform:uppercase;letter-spacing:1px;margin-top:2px}#map{height:320px;border-radius:6px;overflow:hidden;border:1px solid rgba(14,165,233,.2);margin-bottom:10px}table{width:100%;border-collapse:collapse;font-size:.68rem}th{background:#091829;padding:7px 8px;text-align:left;font-size:.57rem;text-transform:uppercase;color:#3A5F7A;letter-spacing:1px;font-family:'Courier New',monospace}td{padding:6px 8px;border-bottom:1px solid rgba(14,165,233,.07)}</style>
+</head><body>
+<div class="tb"><button class="back" onclick="history.length>1?history.back():window.close()">← Volver</button><div class="rt">Eventos Urbanos — Roadcheck IRI</div></div>
+<div class="c">
+<h2>Resumen</h2>
+<div class="cards">
+<div class="card"><div class="v">${total}</div><div class="l">Total</div></div>
+<div class="card"><div class="v" style="color:#EF4444">${graves}</div><div class="l">Graves</div></div>
+<div class="card"><div class="v" style="color:#F97316">${mods}</div><div class="l">Moderados</div></div>
+<div class="card"><div class="v" style="color:#F59E0B">${leves}</div><div class="l">Leves</div></div>
+<div class="card"><div class="v" style="color:#10B981">${pctConf}</div><div class="l">% Confirmados</div></div>
+</div>
+<h2>Mapa de Eventos</h2>
+<div id="map"></div>
+<h2>Tabla de Eventos</h2>
+<table><thead><tr><th>#</th><th>Fecha</th><th>Lat</th><th>Lon</th><th>Tipo</th><th>Severidad</th><th>Score</th><th>Pasadas</th><th>Vel.(km/h)</th><th>✓</th></tr></thead><tbody>${tableRows}</tbody></table>
+</div>
+<script>
+const EVENTS=${eventsJson};
+const map=L.map('map',{zoomControl:true,attributionControl:true});
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,subdomains:['a','b','c'],attribution:'© OpenStreetMap'}).addTo(map);
+const colors={leve:'#F59E0B',moderado:'#F97316',grave:'#EF4444'};
+const pts=[];
+EVENTS.forEach(ev=>{
+  const r=ev.confirmed?9:5,op=ev.confirmed?0.92:0.45;
+  L.circleMarker([ev.lat,ev.lon],{radius:r,color:'#fff',weight:ev.confirmed?2:1,fillColor:colors[ev.severity]||'#888',fillOpacity:op})
+    .addTo(map).bindTooltip(ev.type+' · '+ev.severity+' · '+ev.score+(ev.confirmed?' ✓ ('+ev.confirmCount+' pasadas)':' (candidato)'));
+  pts.push([ev.lat,ev.lon]);
+});
+if(pts.length)map.fitBounds(L.latLngBounds(pts),{padding:[20,20]});
+<\/script></body></html>`;
+  dlBlob(html,'text/html','informe_urban_'+Date.now().toString().slice(-6)+'.html');
+  toast('Informe HTML urbano exportado ✓');
+}
+
 // ─ Garage ─────────────────────────────────────
 function openGarage(){renderGarage();$('garageModal').classList.remove('hidden');}
 function closeGarage(){$('garageModal').classList.add('hidden');}
