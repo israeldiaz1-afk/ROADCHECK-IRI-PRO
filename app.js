@@ -366,9 +366,39 @@ function endCal(ok,err=''){
 }
 function doCalibrate(){startCal();}
 
-// stub — implementado en Fase 4
-function onUrbanEventDetected(event){}
-function addEventMarkerToMap(event){}
+// ─ urban UI ───────────────────────────────────
+function onUrbanEventDetected(event){
+  // Actualizar contadores
+  const counts=S.urbanEvents.reduce((acc,e)=>{acc[e.severity]=(acc[e.severity]||0)+1;return acc;},{});
+  set('uEventCount',S.urbanEvents.length.toString());
+  set('uGraveCount',(counts.grave||0).toString());
+  set('uModCount',(counts.moderado||0).toString());
+
+  // Último evento
+  const icons={pothole:'🕳️',manhole:'⭕',speedbump:'⛰️',crack:'➰',unknown:'❓'};
+  const el=$('uLastEvent');
+  if(el)el.innerHTML=`${icons[event.type]||'❓'} ${capitalize(event.severity)} · score ${event.score.toFixed(0)} · ${event.speed.toFixed(0)} km/h`;
+
+  // Toast solo para graves
+  if(event.severity==='grave')toast('🕳️ Bache grave detectado');
+
+  // Marcador en mapa activo
+  addEventMarkerToMap(event);
+
+  // Vibración háptica (feedback físico, no visual)
+  if(navigator.vibrate&&event.severity!=='leve')navigator.vibrate(event.severity==='grave'?[80,40,80]:60);
+}
+
+function addEventMarkerToMap(event){
+  const colors={leve:'#F59E0B',moderado:'#F97316',grave:'#EF4444'};
+  const map=S.active?S.mapMeas:S.mapMain;
+  if(!map)return;
+  L.circleMarker([event.lat,event.lon],{
+    radius:event.severity==='grave'?8:6,
+    color:'#fff',weight:1.5,
+    fillColor:colors[event.severity],fillOpacity:0.9
+  }).addTo(map).bindTooltip(`${event.type} · ${event.severity} (${event.score.toFixed(0)})`);
+}
 
 // ─ IRI real-time ──────────────────────────────
 function onVert(raw){
@@ -567,10 +597,23 @@ function startMeasurement(){
     return;
   }
   if(!S.vehicleId){toast('⚠️ Selecciona un vehículo');openGarage();return;}
-  S.active=true;S.paused=false;S.pts=[];S.dist=0;S.segCount=0;
-  S.iriMA=0;S.iriCA=0;S.iriN=0;S.iriMax=0;S.iriMin=Infinity;S.iriSum=0;S.iriCnt=0;
+  S.active=true;S.paused=false;S.dist=0;
   S.buf=[];S.chartZ=[];S.chartI=[];S.hpPrev=0;S.hpPrevIn=0;
   S.lineMain?.setLatLngs([]);S.lineMeas?.setLatLngs([]);
+
+  if(S.mode==='urban'){
+    // Modo urbano: resetear eventos y buffers
+    S.urbanEvents=[];S.urbanBuf=[];S._lastEventTs=null;
+    S.noiseBaseline={mean:0,std:0.05,samples:[]};
+    set('uEventCount','0');set('uGraveCount','0');set('uModCount','0');
+    const lEl=$('uLastEvent');if(lEl)lEl.textContent='Sin eventos detectados aún';
+    const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='block';
+  }else{
+    // Modo IRI: resetear acumuladores IRI
+    S.pts=[];S.segCount=0;
+    S.iriMA=0;S.iriCA=0;S.iriN=0;S.iriMax=0;S.iriMin=Infinity;S.iriSum=0;S.iriCnt=0;
+  }
+
   $('meas-sc').classList.remove('hidden');
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     initMeasMap();
@@ -585,12 +628,20 @@ function pauseMeasurement(){S.paused=true;$('btnPause').classList.add('hidden');
 function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');toast('▶ Reanudado');}
 function stopMeasurement(){
   S.active=false;S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
+  const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='none';
+  if(S.mode==='urban'){stopUrbanSession();return;}
   if(S.pts.length<2){toast('Sin datos suficientes');return;}
   const segs=segmentize(S.pts,C.segLen),allC=S.pts.map(p=>p.iri_c),allM=S.pts.map(p=>p.iri_m);
   S.pendingRoute={id:Date.now().toString(),date:new Date().toISOString(),pts:S.pts,segs,
     avgC:allC.reduce((a,b)=>a+b,0)/allC.length,avgM:allM.reduce((a,b)=>a+b,0)/allM.length,
     dist:S.dist,segLen:C.segLen,vehicleId:S.vehicleId};
   $('routeNameInput').value='';$('routeNameModal').classList.remove('hidden');
+}
+
+function stopUrbanSession(){
+  if(S.urbanEvents.length===0){toast('Sin eventos detectados en esta sesión');return;}
+  mergeEventsIntoStorage(S.urbanEvents);
+  toast(`✅ ${S.urbanEvents.length} eventos guardados`);
 }
 function confirmSave(){
   if(!S.pendingRoute)return;

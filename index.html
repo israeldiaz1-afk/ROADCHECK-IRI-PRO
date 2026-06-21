@@ -282,6 +282,16 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 /* ── TOAST ── */
 .toast{position:fixed;bottom:calc(var(--tab-h)+var(--safe-b)+10px);left:50%;transform:translateX(-50%);background:var(--s2);color:var(--txt);padding:7px 16px;border-radius:3px;z-index:9999;font-size:.65rem;border:1px solid var(--ln2);box-shadow:0 4px 20px rgba(0,0,0,.6);max-width:88vw;text-align:center;white-space:nowrap;font-family:var(--mono);letter-spacing:.3px;animation:tin .2s cubic-bezier(.4,0,.2,1)}
 @keyframes tin{from{opacity:0;transform:translateX(-50%) translateY(5px)}to{opacity:1;transform:translateX(-50%)}}
+/* ── URBAN PANEL ── */
+.urban-panel{flex-shrink:0;background:var(--s1);border:1px solid var(--ln2);border-radius:var(--r8);overflow:hidden}
+.urban-stats{display:flex}
+.u-stat{flex:1;padding:10px 11px;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
+.u-stat+.u-stat::before{content:'';position:absolute;left:0;top:10%;height:80%;width:1px;background:var(--ln2)}
+.u-val{font-family:var(--mono);font-size:1.8rem;font-weight:700;line-height:1;color:var(--mid)}
+.u-lbl{font-size:.44rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--dim);font-family:var(--mono)}
+.urban-last-event{padding:8px 12px;font-family:var(--mono);font-size:.62rem;color:var(--dim);border-top:1px solid var(--ln);min-height:30px;display:flex;align-items:center}
+/* Botón flotante de etiquetado (Fase 7) */
+.urban-label-btn{position:fixed;bottom:calc(var(--tab-h)+var(--safe-b)+14px);right:14px;z-index:2900;padding:10px 14px;border-radius:var(--r8);border:1px solid var(--ln2);background:var(--s1);color:var(--txt);font-family:var(--mono);font-size:.6rem;font-weight:700;cursor:pointer;box-shadow:0 3px 14px rgba(0,0,0,.5);display:none}
 .hidden{display:none!important}
 .tag{font-size:.5rem;background:var(--s2);padding:2px 6px;border-radius:3px;color:var(--dim);font-family:var(--mono)}
 </style>
@@ -323,8 +333,14 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
         <div class="iri-scale"><div class="iri-scale-bg"></div><div class="iri-cur" id="iriCur"></div></div>
       </div>
 
-      <!-- Panel Urbano — rellenado en Fase 4 -->
-      <div class="urban-panel hidden" id="urbanPanel"></div>
+      <div class="urban-panel hidden" id="urbanPanel">
+        <div class="urban-stats">
+          <div class="u-stat"><span class="u-val" id="uEventCount">0</span><span class="u-lbl">Eventos</span></div>
+          <div class="u-stat"><span class="u-val" id="uGraveCount" style="color:var(--bad)">0</span><span class="u-lbl">Graves</span></div>
+          <div class="u-stat"><span class="u-val" id="uModCount" style="color:var(--fair)">0</span><span class="u-lbl">Moderados</span></div>
+        </div>
+        <div class="urban-last-event" id="uLastEvent">Sin eventos detectados aún</div>
+      </div>
 
       <!-- MAP — clamp height, no inline style needed -->
       <div class="map-wrap">
