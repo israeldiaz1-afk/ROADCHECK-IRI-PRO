@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Roadcheck IRI — Banco de Pruebas Detección de Baches</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --ink:#05111F;--s1:#091829;--s2:#0D2040;
+  --sky:#0EA5E9;--amber:#F59E0B;--good:#10B981;--fair:#F59E0B;--bad:#EF4444;
+  --txt:#B8D0E4;--dim:#3A5F7A;
+  --mono:'Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--ink);color:var(--txt);font-family:Arial,sans-serif;padding:16px;max-width:920px;margin:0 auto}
+h1{color:var(--sky);font-size:1.2rem;letter-spacing:1px;margin-bottom:4px;font-family:var(--mono);text-transform:uppercase}
+.sub{color:var(--dim);font-size:.75rem;margin-bottom:20px}
+.panel{background:var(--s1);border:1px solid rgba(14,165,233,.15);border-radius:8px;padding:14px;margin-bottom:14px}
+.panel h2{font-size:.8rem;color:var(--sky);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;font-family:var(--mono)}
+.scenario-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.scenario-btn{
+  background:var(--s2);border:1px solid rgba(14,165,233,.2);border-radius:6px;
+  padding:10px;cursor:pointer;color:var(--txt);font-size:.78rem;text-align:left;
+  transition:all .15s;
+}
+.scenario-btn:hover{border-color:var(--sky);background:rgba(14,165,233,.08)}
+.scenario-btn .exp{font-size:.62rem;color:var(--dim);display:block;margin-top:3px}
+.controls{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.controls label{font-size:.7rem;color:var(--dim);display:flex;align-items:center;gap:5px}
+.controls input[type=range]{width:90px}
+.controls input[type=number]{width:55px;background:var(--s2);border:1px solid rgba(14,165,233,.2);color:var(--txt);border-radius:4px;padding:3px 6px;font-family:var(--mono)}
+.run-all{background:linear-gradient(135deg,var(--sky),#0284C7);color:#05111F;border:none;border-radius:6px;padding:10px 18px;font-weight:700;cursor:pointer;font-size:.78rem;letter-spacing:.5px;text-transform:uppercase}
+canvas{max-height:180px}
+#resultsTable{width:100%;border-collapse:collapse;font-size:.74rem;margin-top:10px}
+#resultsTable th{background:var(--s2);padding:6px 8px;text-align:left;color:var(--dim);font-family:var(--mono);font-size:.65rem;text-transform:uppercase}
+#resultsTable td{padding:6px 8px;border-bottom:1px solid rgba(14,165,233,.08);font-family:var(--mono)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.65rem;font-weight:700}
+.badge.ok{background:rgba(16,185,129,.15);color:var(--good)}
+.badge.warn{background:rgba(245,158,11,.15);color:var(--fair)}
+.badge.bad{background:rgba(239,68,68,.15);color:var(--bad)}
+.badge.discard{background:rgba(58,95,122,.2);color:var(--dim)}
+.summary{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.sum-card{background:var(--s2);border-radius:6px;padding:8px 14px;flex:1;min-width:100px;text-align:center}
+.sum-card .v{font-size:1.3rem;font-weight:700;font-family:var(--mono);color:var(--sky)}
+.sum-card .l{font-size:.6rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+#log{background:#000;border-radius:6px;padding:10px;font-family:var(--mono);font-size:.68rem;color:#0f0;max-height:160px;overflow-y:auto;white-space:pre-wrap;margin-top:10px}
+.featdump{font-size:.65rem;color:var(--dim);margin-top:4px;font-family:var(--mono)}
+</style>
+</head>
+<body>
+
+<h1>🧪 Banco de Pruebas — Detección de Baches</h1>
+<div class="sub">Genera señales sintéticas de acelerómetro y verifica que el algoritmo de detección (Fases 2-3 de POTHOLE_DETECTION_SPEC.md) clasifica correctamente. No requiere móvil ni GPS — funciona en cualquier navegador.</div>
+
+<div class="panel">
+  <h2>1 · Escenarios predefinidos</h2>
+  <div class="scenario-grid" id="scenarioGrid"></div>
+</div>
+
+<div class="panel">
+  <h2>2 · Parámetros de simulación</h2>
+  <div class="controls">
+    <label>Velocidad (km/h) <input type="number" id="simSpeed" value="20" min="0" max="60"></label>
+    <label>Ruido de fondo (m/s²) <input type="range" id="simNoise" min="0.02" max="0.3" step="0.01" value="0.06"><span id="simNoiseVal">0.06</span></label>
+    <label><input type="checkbox" id="simAutoBrake"> Frenazo simultáneo (test anti-falso-positivo)</label>
+  </div>
+  <button class="run-all" onclick="runAllScenarios()">▶ Ejecutar todos los escenarios</button>
+  <button class="run-all" style="background:#0D2040;color:var(--txt);border:1px solid rgba(14,165,233,.25)" onclick="clearResults()">🗑 Limpiar resultados</button>
+</div>
+
+<div class="panel">
+  <h2>3 · Señal generada (última simulación)</h2>
+  <canvas id="signalChart"></canvas>
+  <div class="featdump" id="featDump"></div>
+</div>
+
+<div class="panel">
+  <h2>4 · Resultados</h2>
+  <div class="summary" id="summary"></div>
+  <table id="resultsTable">
+    <thead><tr><th>Escenario</th><th>Esperado</th><th>Detectado</th><th>Tipo</th><th>Score</th><th>Resultado</th></tr></thead>
+    <tbody id="resultsBody"></tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h2>5 · Log técnico</h2>
+  <div id="log">Listo. Pulsa un escenario o "Ejecutar todos".\n</div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════
+   MOTOR DE DETECCIÓN — réplica exacta de las fórmulas
+   especificadas en POTHOLE_DETECTION_SPEC.md (Fases 2-3)
+   para poder validarlas de forma aislada sin la app completa.
+════════════════════════════════════════════════ */
+
+const URBAN_TUNABLE = {
+  triggerSigma: 4,
+  triggerFloorMs2: 1.2,
+  vRefUrban: 25,
+  vMinNormalize: 5,
+  speedExponent: 0.7,
+  ampCeiling: 6,        // ★ bajado de 8 → 6 (rango real observado: 0.1-5)
+  jerkCeiling: 220,     // ★ subido de 40 → 220 (rango real observado: 9-300, antes saturaba siempre)
+  scoreDiscardBelow: 25,
+  severityModerateAt: 40,
+  severityGraveAt: 65,
+  brakeCorrelationVeto: 0.6
+};
+
+const URBAN_WEIGHTS = { amp:0.30, jerk:0.25, bipolarity:0.20, freqEnergy:0.15, brakePenalty:0.10 };
+
+function normalizeByVelocity(value, speedKmh) {
+  const { vRefUrban, vMinNormalize, speedExponent } = URBAN_TUNABLE;
+  if (speedKmh < vMinNormalize) return value;
+  return value * Math.pow(vRefUrban / speedKmh, speedExponent);
+}
+
+function extractFeatures(samples) {
+  // samples: [{t, vert, ay}]
+  const verts = samples.map(s => s.vert);
+  const peakAmp = Math.max(...verts.map(Math.abs));
+  const peakIdx = verts.findIndex(v => Math.abs(v) === peakAmp);
+
+  let jerkMax = 0;
+  for (let i = 1; i < samples.length; i++) {
+    const dt = (samples[i].t - samples[i-1].t) / 1000;
+    if (dt <= 0) continue;
+    jerkMax = Math.max(jerkMax, Math.abs((samples[i].vert - samples[i-1].vert) / dt));
+  }
+
+  const halfPeak = peakAmp * 0.5;
+  const above = samples.filter(s => Math.abs(s.vert) > halfPeak);
+  const duration = above.length > 1 ? (above[above.length-1].t - above[0].t) : 0;
+
+  let bipolarity = 0;
+  if (peakIdx >= 0 && peakIdx < samples.length - 3) {
+    const peakSign = Math.sign(samples[peakIdx].vert);
+    const after = samples.slice(peakIdx + 1, peakIdx + 6);
+    const oppositeSignPeak = Math.max(...after.map(s => peakSign > 0 ? -s.vert : s.vert), 0);
+    bipolarity = Math.min(1, oppositeSignPeak / peakAmp);
+  }
+
+  // ★ FIX: la energía de frecuencia se mide SOLO en una ventana estrecha
+  // alrededor del pico (±9 muestras ≈150ms), no en todo el buffer.
+  // Antes incluía el ruido de fondo de antes/después del evento, que
+  // tiene muchos cruces por cero propios y contaminaba la métrica.
+  const coreStart = Math.max(0, peakIdx - 9);
+  const coreEnd = Math.min(samples.length, peakIdx + 9);
+  const core = samples.slice(coreStart, coreEnd);
+  let crossings = 0;
+  for (let i = 1; i < core.length; i++) if (Math.sign(core[i].vert) !== Math.sign(core[i-1].vert)) crossings++;
+  const coreDurationS = core.length > 1 ? (core[core.length-1].t - core[0].t) / 1000 : 0.001;
+  const crossingFreq = coreDurationS > 0 ? crossings / coreDurationS / 2 : 0;
+  const freqEnergy = Math.min(1, Math.max(0, (crossingFreq - 4) / 16));
+
+  const ays = samples.map(s => Math.abs(s.ay || 0));
+  const ayAvg = ays.reduce((a,b)=>a+b,0) / ays.length;
+  const brakeCorrelation = Math.min(1, ayAvg / 3);
+
+  return { peakAmp, jerkMax, duration, bipolarity, freqEnergy, brakeCorrelation };
+}
+
+function classifyType(features) {
+  if (features.duration > 220 && features.freqEnergy < 0.15) return 'speedbump';
+  if (features.duration < 80 && features.bipolarity < 0.2) return 'manhole';
+  if (features.bipolarity > 0.28 && features.freqEnergy > 0.15) return 'pothole';
+  return 'unknown';
+}
+
+function scoreAndClassify(features, speedKmh) {
+  const type = classifyType(features);
+  const ampNorm = Math.min(1, normalizeByVelocity(features.peakAmp, speedKmh) / URBAN_TUNABLE.ampCeiling);
+
+  // ★ FIX: los badenes tienen una firma físicamente "suave" (bajo jerk, sin
+  // bipolaridad, sin alta frecuencia) — eso es justo lo que los DEFINE, no una
+  // señal débil. Puntuarlos con la fórmula de impacto agudo los descartaba
+  // injustamente (quedaban siempre rozando el umbral de ruido). Se valoran
+  // aparte, solo por amplitud normalizada.
+  if (type === 'speedbump') {
+    const bumpScore = Math.max(0, Math.min(100, ampNorm * 100));
+    if (bumpScore < 15) return { discarded: true, reason: 'amplitud insuficiente para badén', score: bumpScore };
+    const severity = bumpScore >= 55 ? 'moderado' : 'leve';
+    return { discarded: false, severity, type, score: bumpScore };
+  }
+
+  const jerkNorm = Math.min(1, features.jerkMax / URBAN_TUNABLE.jerkCeiling);
+
+  const rawScore =
+    URBAN_WEIGHTS.amp * ampNorm +
+    URBAN_WEIGHTS.jerk * jerkNorm +
+    URBAN_WEIGHTS.bipolarity * features.bipolarity +
+    URBAN_WEIGHTS.freqEnergy * features.freqEnergy -
+    URBAN_WEIGHTS.brakePenalty * features.brakeCorrelation;
+
+  const score = Math.max(0, Math.min(100, rawScore * 100));
+
+  // ★ FIX: eliminado el veto absoluto por frenado. La puerta de disparo (Fase 2.3)
+  // ya descarta el ruido de frenada PURA (peakAmp insuficiente para activarla).
+  // Un veto adicional aquí descartaba también baches/tapas REALES que ocurren
+  // mientras se frena — muy habitual en ciudad (frenar al acercarse a un bache).
+  // La correlación de frenado ya se penaliza de forma proporcional arriba (-0.10).
+
+  if (score < URBAN_TUNABLE.scoreDiscardBelow) {
+    return { discarded: true, reason: 'score bajo umbral de ruido', score };
+  }
+
+  const severity = score >= URBAN_TUNABLE.severityGraveAt ? 'grave'
+                 : score >= URBAN_TUNABLE.severityModerateAt ? 'moderado' : 'leve';
+
+  return { discarded: false, severity, type, score };
+}
+
+/* ════════════════════════════════════════════════
+   GENERADORES DE SEÑAL SINTÉTICA
+   Cada función produce samples {t, vert, ay} a 60Hz
+   simulando la forma de onda característica de cada evento.
+════════════════════════════════════════════════ */
+
+function genNoise(durationMs, noiseStd) {
+  const samples = [];
+  const dt = 1000/60;
+  for (let t = 0; t < durationMs; t += dt) {
+    samples.push({ t, vert: gauss() * noiseStd, ay: gauss() * noiseStd * 0.5 });
+  }
+  return samples;
+}
+function gauss(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+function genPothole(noiseStd, amplitude=6) {
+  // Caída brusca + rebote opuesto + amortiguación — firma bipolar clásica
+  // ★ decay ajustado de 0.35 → 0.22: rebote más marcado y realista
+  const samples = genNoise(500, noiseStd);
+  const dt = 1000/60;
+  const start = 200;
+  for (let i = 0; i < 14; i++) {
+    const t = start + i*dt;
+    const decay = Math.exp(-i*0.22);
+    const wave = Math.sin(i*0.9) * decay;
+    const idx = samples.findIndex(s => Math.abs(s.t - t) < dt/2);
+    if (idx >= 0) samples[idx].vert += amplitude * wave;
+  }
+  return samples;
+}
+
+function genManhole(noiseStd, amplitude=4) {
+  // Pico corto y aislado, sin rebote significativo
+  const samples = genNoise(500, noiseStd);
+  const dt = 1000/60;
+  const start = 200;
+  for (let i = 0; i < 4; i++) {
+    const t = start + i*dt;
+    const wave = Math.exp(-i*1.2) * (i===0?1:0.3);
+    const idx = samples.findIndex(s => Math.abs(s.t - t) < dt/2);
+    if (idx >= 0) samples[idx].vert += amplitude * wave;
+  }
+  return samples;
+}
+
+function genSpeedbump(noiseStd, amplitude=3) {
+  // Onda larga y de baja frecuencia (subida-bajada suave)
+  const samples = genNoise(700, noiseStd);
+  const dt = 1000/60;
+  const start = 150;
+  const n = 24;
+  for (let i = 0; i < n; i++) {
+    const t = start + i*dt;
+    const wave = Math.sin((i/n) * Math.PI);
+    const idx = samples.findIndex(s => Math.abs(s.t - t) < dt/2);
+    if (idx >= 0) samples[idx].vert += amplitude * wave;
+  }
+  return samples;
+}
+
+function genBrake(noiseStd) {
+  // Deceleración longitudinal sostenida (eje Y), sin pico vertical relevante
+  const samples = genNoise(600, noiseStd);
+  samples.forEach((s, i) => {
+    if (i > 5 && i < samples.length - 5) s.ay += 2.8 + gauss()*0.2; // frenada fuerte y sostenida
+  });
+  return samples;
+}
+
+function genDoorSlam(noiseStd, amplitude=5) {
+  // Pico único muy corto, sin rebote, sin componente longitudinal
+  const samples = genNoise(400, noiseStd);
+  const dt = 1000/60;
+  const idx = samples.findIndex(s => Math.abs(s.t - 180) < dt/2);
+  if (idx >= 0) samples[idx].vert += amplitude;
+  return samples;
+}
+
+function genSmoothRoad(noiseStd) {
+  // Solo ruido de fondo, sin eventos — debe descartarse siempre
+  return genNoise(600, noiseStd);
+}
+
+function genPotholeShallow(noiseStd) {
+  // Bache leve, amplitud baja — caso límite para probar sensibilidad
+  return genPothole(noiseStd, 2.2);
+}
+
+/* ════════════════════════════════════════════════
+   ESCENARIOS DE PRUEBA
+════════════════════════════════════════════════ */
+const SCENARIOS = [
+  { id:'pothole_clear', name:'🕳️ Bache claro', exp:'pothole / grave', gen: ns => genPothole(ns, 6.5) },
+  { id:'pothole_shallow', name:'🕳️ Bache leve', exp:'pothole / leve-moderado', gen: ns => genPotholeShallow(ns) },
+  { id:'manhole', name:'⭕ Tapa de registro', exp:'manhole / leve-moderado', gen: ns => genManhole(ns, 4) },
+  { id:'speedbump', name:'⛰️ Badén', exp:'speedbump / moderado', gen: ns => genSpeedbump(ns, 3.5) },
+  { id:'brake', name:'🛑 Frenazo brusco', exp:'DESCARTADO (no es evento)', gen: ns => genBrake(ns) },
+  { id:'door', name:'🚪 Puerta / golpe aislado', exp:'incierto — caso límite', gen: ns => genDoorSlam(ns, 5) },
+  { id:'smooth', name:'✅ Asfalto liso', exp:'DESCARTADO (sin evento)', gen: ns => genSmoothRoad(ns) },
+  { id:'pothole_highspeed', name:'🕳️ Bache a más velocidad', exp:'pothole (norm. por velocidad)', gen: ns => genPothole(ns, 5), speedOverride: 40 },
+];
+
+let chartRef = null;
+const results = [];
+
+function buildScenarioButtons() {
+  const grid = $('scenarioGrid');
+  grid.innerHTML = SCENARIOS.map(s => `
+    <button class="scenario-btn" onclick="runScenario('${s.id}')">
+      ${s.name}
+      <span class="exp">Esperado: ${s.exp}</span>
+    </button>
+  `).join('');
+}
+function $(id){ return document.getElementById(id); }
+
+function log(msg) {
+  const el = $('log');
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function runScenario(id) {
+  const sc = SCENARIOS.find(s => s.id === id);
+  if (!sc) return;
+  const noiseStd = parseFloat($('simNoise').value);
+  const speed = sc.speedOverride || parseFloat($('simSpeed').value);
+
+  let samples = sc.gen(noiseStd);
+  if ($('simAutoBrake').checked && sc.id !== 'brake') {
+    samples = samples.map(s => ({ ...s, ay: (s.ay||0) + 2.5 }));
+  }
+
+  const features = extractFeatures(samples);
+
+  // ★ FIX: puerta de disparo — replica el comportamiento real de la app
+  // (Fase 2.3 del spec). Sin esto, ruido puro llegaba a puntuarse y
+  // podía colarse como evento por azar estadístico.
+  const dynamicThreshold = Math.max(
+    noiseStd * URBAN_TUNABLE.triggerSigma,
+    URBAN_TUNABLE.triggerFloorMs2
+  );
+  let result;
+  if (features.peakAmp < dynamicThreshold) {
+    result = { discarded: true, reason: 'no supera el umbral de disparo (ruido de fondo)', score: 0 };
+  } else {
+    result = scoreAndClassify(features, speed);
+  }
+
+  drawSignal(samples, sc.name);
+  dumpFeatures(features, speed);
+
+  const row = {
+    scenario: sc.name,
+    expected: sc.exp,
+    speed,
+    features,
+    result
+  };
+  results.push(row);
+  renderResults();
+
+  log(`[${sc.name}] amp=${features.peakAmp.toFixed(2)} jerk=${features.jerkMax.toFixed(1)} ` +
+      `bipolar=${features.bipolarity.toFixed(2)} freq=${features.freqEnergy.toFixed(2)} ` +
+      `brakeCorr=${features.brakeCorrelation.toFixed(2)} → ` +
+      (result.discarded ? `DESCARTADO (${result.reason}, score=${result.score.toFixed(0)})`
+                         : `${result.type}/${result.severity} score=${result.score.toFixed(0)}`));
+}
+
+function runAllScenarios() {
+  clearResults();
+  SCENARIOS.forEach((s, i) => setTimeout(() => runScenario(s.id), i * 120));
+}
+
+function clearResults() {
+  results.length = 0;
+  $('resultsBody').innerHTML = '';
+  $('summary').innerHTML = '';
+  $('log').textContent = 'Resultados limpiados.\n';
+}
+
+function renderResults() {
+  $('resultsBody').innerHTML = results.map(r => {
+    const detected = r.result.discarded ? '—' : (r.result.severity);
+    const type = r.result.discarded ? '—' : r.result.type;
+    const score = r.result.score.toFixed(0);
+    const badgeClass = r.result.discarded ? 'discard'
+      : r.result.severity === 'grave' ? 'bad'
+      : r.result.severity === 'moderado' ? 'warn' : 'ok';
+    const outcome = r.result.discarded ? `Descartado (${r.result.reason})` : 'Evento registrado';
+    return `<tr>
+      <td>${r.scenario}</td>
+      <td style="color:var(--dim)">${r.expected}</td>
+      <td>${detected}</td>
+      <td>${type}</td>
+      <td>${score}</td>
+      <td><span class="badge ${badgeClass}">${outcome}</span></td>
+    </tr>`;
+  }).join('');
+
+  const total = results.length;
+  const detected = results.filter(r => !r.result.discarded).length;
+  const discarded = total - detected;
+  const grave = results.filter(r => r.result.severity === 'grave').length;
+
+  $('summary').innerHTML = `
+    <div class="sum-card"><div class="v">${total}</div><div class="l">Escenarios</div></div>
+    <div class="sum-card"><div class="v">${detected}</div><div class="l">Detectados</div></div>
+    <div class="sum-card"><div class="v">${discarded}</div><div class="l">Descartados</div></div>
+    <div class="sum-card"><div class="v" style="color:var(--bad)">${grave}</div><div class="l">Graves</div></div>
+  `;
+}
+
+function dumpFeatures(f, speed) {
+  $('featDump').textContent =
+    `peakAmp=${f.peakAmp.toFixed(3)} m/s²  |  jerkMax=${f.jerkMax.toFixed(2)} m/s³  |  ` +
+    `duration=${f.duration.toFixed(0)}ms  |  bipolarity=${f.bipolarity.toFixed(3)}  |  ` +
+    `freqEnergy=${f.freqEnergy.toFixed(3)}  |  brakeCorrelation=${f.brakeCorrelation.toFixed(3)}  |  ` +
+    `velocidad=${speed}km/h`;
+}
+
+function drawSignal(samples, title) {
+  const ctx = $('signalChart').getContext('2d');
+  if (chartRef) chartRef.destroy();
+  chartRef = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: samples.map(s => s.t.toFixed(0)),
+      datasets: [
+        { label: 'Acel. vertical (m/s²)', data: samples.map(s=>s.vert), borderColor:'#F59E0B', pointRadius:0, tension:.2 },
+        { label: 'Acel. longitudinal Y (m/s²)', data: samples.map(s=>s.ay||0), borderColor:'#0EA5E9', pointRadius:0, tension:.2, borderDash:[4,3] }
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:true, animation:false,
+      plugins:{ legend:{ labels:{ color:'#B8D0E4', font:{size:10} } }, title:{ display:true, text:title, color:'#0EA5E9', font:{size:11} } },
+      scales:{
+        x:{ ticks:{ color:'#3A5F7A', font:{size:9}, maxTicksLimit:8 }, title:{display:true,text:'tiempo (ms)',color:'#3A5F7A',font:{size:9}} },
+        y:{ ticks:{ color:'#3A5F7A', font:{size:9} } }
+      }
+    }
+  });
+}
+
+$('simNoise').addEventListener('input', function(){ $('simNoiseVal').textContent = this.value; });
+
+buildScenarioButtons();
+</script>
+</body>
+</html>
