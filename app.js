@@ -19,6 +19,11 @@ const S={
   vehicleId:null,selRoutes:new Set(),showAvg:false,
   curDetail:null,curDetailRoute:null,overlapCb:null,pendingRoute:null,
   timerRef:null,timerStart:0,
+  mode:'iri',
+  urbanBuf:[],urbanBufMax:90,
+  urbanEvents:[],
+  noiseBaseline:{mean:0,std:0.05,samples:[]},
+  _lastEventTs:null,
   mapMain:null,mapMeas:null,mapVisor:null,mapDetail:null,
   lineMain:null,lineMeas:null,mkMain:null,mkMeas:null,mkDetail:null,
 };
@@ -77,6 +82,19 @@ function loadCfg(){
   if(vid){const v=allVeh().find(v=>v.id===vid);if(v){C.coefA=v.coefA;C.coefB=v.coefB;S.vehicleId=vid;updateVehUI(v);}}
 }
 function saveCfg(){try{localStorage.setItem('rc_cfg',JSON.stringify(C));}catch(e){}}
+
+// ─ mode switch ────────────────────────────────
+function setMode(mode){
+  S.mode=mode;
+  localStorage.setItem('rc_mode',mode);
+  S.urbanBuf=[];S.urbanEvents=[];
+  document.querySelectorAll('.mode-btn').forEach(b=>{
+    b.classList.toggle('active',b.dataset.mode===mode);
+  });
+  $('iriPanel')?.classList.toggle('hidden',mode==='urban');
+  $('urbanPanel')?.classList.toggle('hidden',mode==='iri');
+}
+const capitalize=s=>s.charAt(0).toUpperCase()+s.slice(1);
 function allVeh(){return[...VEHICLES,...JSON.parse(localStorage.getItem('rc_cveh')||'[]')];}
 function allRoutes(){try{return JSON.parse(localStorage.getItem('rc_routes')||'[]');}catch(e){return[];}}
 function saveRoute(r){try{const rs=allRoutes();rs.push(r);localStorage.setItem('rc_routes',JSON.stringify(rs));}catch(e){toast('Error guardando');}}
@@ -747,6 +765,8 @@ window.addEventListener('load',()=>{
   $('vExpSlider')?.addEventListener('input',function(){set('vExpLbl',parseFloat(this.value).toFixed(2));});
   $('vMinSlider')?.addEventListener('input',function(){set('vMinLbl',this.value);});
   set('segVal',C.segLen+' m');set('vrefVal',C.vRef+' km/h');
+  const savedMode=localStorage.getItem('rc_mode')||'iri';
+  if(savedMode!=='iri')setMode(savedMode);
   // Doble rAF garantiza que el CSS clamp() ya está calculado
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     initStaticMaps();
