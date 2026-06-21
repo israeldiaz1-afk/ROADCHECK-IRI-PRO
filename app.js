@@ -264,6 +264,60 @@ function extractFeaturesAndScore(triggerTs){
   const features={peakAmp,jerkMax,duration,bipolarity,freqEnergy,brakeCorrelation};
   scoreAndClassify(features,triggerTs);
 }
+
+// ─ scoring & classification ───────────────────
+// Parámetros ajustables en campo (ver URBAN_TUNABLE en spec)
+const URBAN_WEIGHTS={amp:0.30,jerk:0.25,bipolarity:0.20,freqEnergy:0.15,brakePenalty:0.10};
+
+function normalizeByVelocity(value,speedKmh){
+  const vRef=25,vMin=5; // vRef urbana, distinto al 80km/h de IRI
+  if(speedKmh<vMin)return value;
+  return value*Math.pow(vRef/speedKmh,0.7); // exponente urbano 0.7 vs 0.5 de IRI
+}
+
+function scoreAndClassify(features,triggerTs){
+  const speed=S.lastPos?.speed||0;
+  const ampNorm=Math.min(1,normalizeByVelocity(features.peakAmp,speed)/8); // 8 m/s² techo
+  const jerkNorm=Math.min(1,features.jerkMax/40); // 40 m/s³ techo
+
+  const rawScore=
+    URBAN_WEIGHTS.amp*ampNorm+
+    URBAN_WEIGHTS.jerk*jerkNorm+
+    URBAN_WEIGHTS.bipolarity*features.bipolarity+
+    URBAN_WEIGHTS.freqEnergy*features.freqEnergy-
+    URBAN_WEIGHTS.brakePenalty*features.brakeCorrelation;
+
+  const score=Math.max(0,Math.min(100,rawScore*100));
+
+  // Descartar frenazo sostenido sin rebote vertical
+  if(features.brakeCorrelation>0.6&&features.bipolarity<0.3)return;
+  if(score<25)return; // ruido
+
+  const severity=score>=65?'grave':score>=40?'moderado':'leve';
+  const type=classifyType(features);
+  registerEvent({triggerTs,speed,severity,score,type,features});
+}
+
+function classifyType(f){
+  if(f.duration>350&&f.freqEnergy<0.3)return 'speedbump'; // largo y baja frecuencia
+  if(f.duration<80&&f.bipolarity<0.2)return 'manhole';    // corto y sin rebote
+  if(f.bipolarity>0.4&&f.freqEnergy>0.4)return 'pothole'; // firma clásica de bache
+  return 'unknown';
+}
+
+function registerEvent({triggerTs,speed,severity,score,type,features}){
+  if(!S.lastPos)return;
+  const event={
+    id:triggerTs+'_'+Math.random().toString(36).slice(2,7),
+    ts:triggerTs,
+    lat:S.lastPos.lat,lon:S.lastPos.lon,
+    speed,type,severity,score,features,
+    confirmed:false,confirmCount:1
+  };
+  S.urbanEvents.push(event);
+  S._lastEventTs=triggerTs;
+  onUrbanEventDetected(event);
+}
 function showIOSPerm(){$('sensorPermModal')?.classList.remove('hidden');}
 function grantIOS(){$('sensorPermModal')?.classList.add('hidden');DeviceMotionEvent.requestPermission().then(s=>{if(s==='granted'){S.sensorOK=true;$('btnIOS')?.classList.add('hidden');tryAccel();startCal();toast('Permiso concedido');}else toast('Permiso denegado');});}
 
@@ -311,6 +365,10 @@ function endCal(ok,err=''){
   toast('✅ Calibración OK · Ruido: '+S.noiseLevel.toFixed(3)+' m/s²');
 }
 function doCalibrate(){startCal();}
+
+// stub — implementado en Fase 4
+function onUrbanEventDetected(event){}
+function addEventMarkerToMap(event){}
 
 // ─ IRI real-time ──────────────────────────────
 function onVert(raw){
