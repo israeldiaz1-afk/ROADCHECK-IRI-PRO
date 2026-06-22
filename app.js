@@ -14,7 +14,7 @@ const S={
   calPhase:0,calStart:0,gravSamples:[],vibSamples:[],
   grav:null,gravMag:9.81,noiseLevel:.05,
   hpPrev:0,hpPrevIn:0,buf:[],bufMax:50,
-  chart3Axis:null,chartMeas:null,chartDetail:null,
+  chartMeas:null,chartDetail:null,
   chartZ:[],chartI:[],chartMax:80,lastChartUpd:0,lastIRIUpd:0,
   vehicleId:null,selRoutes:new Set(),showAvg:false,
   curDetail:null,curDetailRoute:null,overlapCb:null,pendingRoute:null,
@@ -732,7 +732,7 @@ function startMeasurement(){
   if(S.activeModes.has('iri')&&!S.vehicleId){toast('⚠️ Selecciona un vehículo para el modo Carretera');openGarage();return;}
   S.active=true;S.paused=false;S.dist=0;
   S.buf=[];S.chartZ=[];S.chartI=[];S.hpPrev=0;S.hpPrevIn=0;
-  S.rawAxisBuf={x:[],y:[],z:[],max:80};S.chartMarks=[];
+  stopEKG();
   S.lineMain?.setLatLngs([]);S.lineMeas?.setLatLngs([]);
 
   if(S.activeModes.has('urban')){
@@ -763,7 +763,7 @@ function startMeasurement(){
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     initMeasMap();
     if(S.lastPos&&S.mapMeas)mapCenter(S.mapMeas,S.lastPos.lat,S.lastPos.lon,17);
-    if(!S.chart3Axis)S.chart3Axis=make3AxisChart('measChart3Axis');
+    initEKG('measChart3Axis');
   }));
   ['aMax','aMed','aMin'].forEach(id=>set(id,'—'));set('aSegs','0');
   $('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');
@@ -773,6 +773,7 @@ function pauseMeasurement(){S.paused=true;$('btnPause').classList.add('hidden');
 function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');toast('▶ Reanudado');}
 function stopMeasurement(){
   S.active=false;S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
+  stopEKG();
   const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='none';
 
   const modesUsed=[...S.activeModes];
@@ -1675,56 +1676,75 @@ window.addEventListener('load',()=>{
   console.log('[Pavement Check v4.0] OK');
 });
 
-// ─ Gráfico 3 ejes (Fase 8) ────────────────────
-const multiMarkPlugin={
-  id:'multiMark',
-  afterDatasetsDraw(chart){
-    if(!S.chartMarks?.length)return;
-    const meta=chart.getDatasetMeta(0);
-    S.chartMarks.forEach(mark=>{
-      if(mark.idx<0||mark.idx>=meta.data.length)return;
-      const x=meta.data[mark.idx]?.x;if(x===undefined)return;
-      const{top,bottom}=chart.chartArea,ctx=chart.ctx;
-      ctx.save();ctx.strokeStyle=mark.color;ctx.lineWidth=2;ctx.globalAlpha=.85;
-      ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,bottom);ctx.stroke();ctx.restore();
-    });
-  }
+// ─ EKG 3 canales Canvas 2D (Fase 4 v2) ───────────
+const EKG={
+  canvas:null,ctx:null,W:0,H:0,
+  buf:{z:[],x:[],y:[],marks:[],max:120},
+  COLORS:{z:'#0EA5E9',x:'#EF4444',y:'#10B981'},
+  LABELS:{z:'Z',x:'X',y:'Y'},
+  animId:null
 };
-function make3AxisChart(id){
-  const ctx=$(id)?.getContext('2d');if(!ctx)return null;
-  if(S.chart3Axis){S.chart3Axis.destroy();S.chart3Axis=null;}
-  return new Chart(ctx,{
-    type:'line',
-    plugins:[multiMarkPlugin],
-    data:{labels:[],datasets:[
-      {label:'X',data:[],borderColor:'#EF4444',yAxisID:'y',tension:.25,pointRadius:0,fill:false},
-      {label:'Y',data:[],borderColor:'#10B981',yAxisID:'y',tension:.25,pointRadius:0,fill:false},
-      {label:'Z',data:[],borderColor:'#0EA5E9',yAxisID:'y',tension:.25,pointRadius:0,fill:false}
-    ]},
-    options:{
-      responsive:true,maintainAspectRatio:false,animation:false,
-      scales:{x:{display:false},y:{display:false}},
-      plugins:{legend:{display:false}}
-    }
-  });
+function initEKG(canvasId){
+  EKG.canvas=$(canvasId);if(!EKG.canvas)return;
+  EKG.ctx=EKG.canvas.getContext('2d');
+  const resize=()=>{
+    const rect=EKG.canvas.getBoundingClientRect();
+    EKG.canvas.width=rect.width*devicePixelRatio;
+    EKG.canvas.height=rect.height*devicePixelRatio;
+    EKG.W=EKG.canvas.width;EKG.H=EKG.canvas.height;
+    if(EKG.buf.z.length)drawEKG();
+  };
+  resize();
+  new ResizeObserver(resize).observe(EKG.canvas);
 }
 function feedRawAxisChart(x,y,z){
-  if(!S.rawAxisBuf)return;
-  S.rawAxisBuf.x.push(x);S.rawAxisBuf.y.push(y);S.rawAxisBuf.z.push(z);
-  if(S.rawAxisBuf.x.length>S.rawAxisBuf.max){S.rawAxisBuf.x.shift();S.rawAxisBuf.y.shift();S.rawAxisBuf.z.shift();}
-  updateMeas3AxisChart();
+  EKG.buf.z.push(z);EKG.buf.x.push(x);EKG.buf.y.push(y);
+  if(EKG.buf.z.length>EKG.buf.max){EKG.buf.z.shift();EKG.buf.x.shift();EKG.buf.y.shift();}
+  if(!EKG.animId)EKG.animId=requestAnimationFrame(drawEKG);
 }
-function updateMeas3AxisChart(){
-  const c=S.chart3Axis;if(!c)return;
-  const n=S.rawAxisBuf.x.length,lbl=Array.from({length:n},(_,i)=>i);
-  c.data.labels=lbl;
-  c.data.datasets[0].data=S.rawAxisBuf.x;
-  c.data.datasets[1].data=S.rawAxisBuf.y;
-  c.data.datasets[2].data=S.rawAxisBuf.z;
-  c.update('none');
+function drawEKG(){
+  EKG.animId=null;
+  const{ctx,W,H,buf,COLORS,LABELS}=EKG;if(!ctx||W===0)return;
+  const AXES=['z','x','y'],rowH=H/3,labelW=28*devicePixelRatio;
+  ctx.clearRect(0,0,W,H);
+  AXES.forEach((ax,i)=>{
+    const y0=i*rowH,plotW=W-labelW;
+    ctx.fillStyle=i%2===0?'rgba(9,24,41,.9)':'rgba(13,32,64,.9)';
+    ctx.fillRect(0,y0,W,rowH);
+    ctx.strokeStyle='rgba(14,165,233,.15)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(0,y0);ctx.lineTo(W,y0);ctx.stroke();
+    ctx.fillStyle=COLORS[ax];
+    ctx.font=`bold ${Math.round(11*devicePixelRatio)}px 'JetBrains Mono',monospace`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(LABELS[ax],labelW/2,y0+rowH/2);
+    const midY=y0+rowH/2;
+    ctx.strokeStyle='rgba(14,165,233,.12)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(labelW,midY);ctx.lineTo(W,midY);ctx.stroke();
+    ctx.setLineDash([]);
+    const data=buf[ax];if(data.length<2)return;
+    const scaleY=(rowH/2)/12;
+    ctx.strokeStyle=COLORS[ax];ctx.lineWidth=1.5*devicePixelRatio;
+    ctx.beginPath();
+    data.forEach((v,j)=>{
+      const px=labelW+(j/buf.max)*plotW,py=midY-v*scaleY;
+      j===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+    });
+    ctx.stroke();
+    buf.marks.forEach(m=>{
+      if(m.idx<0||m.idx>=buf.max)return;
+      const px=labelW+(m.idx/buf.max)*plotW;
+      ctx.strokeStyle=m.color;ctx.lineWidth=2*devicePixelRatio;ctx.globalAlpha=.7;
+      ctx.beginPath();ctx.moveTo(px,y0+2);ctx.lineTo(px,y0+rowH-2);ctx.stroke();
+      ctx.globalAlpha=1;
+    });
+  });
+}
+function stopEKG(){
+  if(EKG.animId){cancelAnimationFrame(EKG.animId);EKG.animId=null;}
+  EKG.buf.z=[];EKG.buf.x=[];EKG.buf.y=[];EKG.buf.marks=[];
 }
 function registerChartMark(color,source){
-  if(!S.chartMarks||!S.rawAxisBuf)return;
-  S.chartMarks.push({idx:S.rawAxisBuf.x.length-1,color,source,ts:Date.now()});
-  S.chartMarks=S.chartMarks.filter(m=>Date.now()-m.ts<3000);
+  if(!EKG.buf)return;
+  EKG.buf.marks.push({idx:EKG.buf.z.length-1,color});
+  if(EKG.buf.marks.length>20)EKG.buf.marks.shift();
 }
