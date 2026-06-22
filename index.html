@@ -297,12 +297,16 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .m-st .sv{font-family:var(--mono);font-size:.78rem;font-weight:700;color:var(--amber)}
 .m-btns{display:flex;gap:5px;flex-shrink:0}.m-btns .btn{flex:1;padding:11px;font-size:.68rem;letter-spacing:1px}
 
+/* ── MEAS COMFORT BADGE ── */
+.meas-comfort-badge{display:flex;align-items:center;gap:6px;background:var(--s2);border-radius:6px;padding:6px 10px;margin:4px 8px;font-family:var(--mono);font-size:var(--fs-sm)}
+.mcb-val{font-weight:700}
+
 /* ── ADAPTIVE CAL INDICATOR ── */
-.adapt-cal-indicator{display:flex;align-items:center;gap:6px;flex-shrink:0;padding:4px 10px;background:var(--s2);border:1px solid var(--ln);border-radius:var(--r8)}
-.aci-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:background .4s}
+.adapt-cal-indicator{display:flex!important;align-items:center;gap:6px;padding:5px 10px;background:var(--s2);border-radius:5px;margin:4px 8px;font-size:var(--fs-xs);font-family:var(--mono);color:var(--txt);z-index:10;position:relative}
+.aci-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:background .3s}
 .aci-dot.sampling{animation:pulse 1.2s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:.4;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
-.aci-txt{font-family:var(--mono);font-size:var(--fs-xs);color:var(--dim);letter-spacing:.3px}
+.aci-txt{letter-spacing:.3px}
 
 /* ── MEAS URBAN PANEL ── */
 .meas-urban-panel{flex-shrink:0;background:var(--s1);border:1px solid var(--ln);border-radius:var(--r8);overflow:hidden}
@@ -515,6 +519,10 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
       <div class="mec"><span class="mec-val" id="muGrave" style="color:#EF4444">0</span><span class="mec-lbl">🔴 Graves</span></div>
     </div>
     <div class="meas-last-event" id="muLastEvent">Sin eventos detectados</div>
+  </div>
+  <div class="meas-comfort-badge hidden" id="measComfortBadge">
+    <span class="mcb-ico">📳</span>
+    <span class="mcb-val" id="mcbVal">—</span>
   </div>
   <div class="adapt-cal-indicator" id="adaptCalInd">
     <div class="aci-dot" id="aciDot" style="background:#3A5F7A"></div>

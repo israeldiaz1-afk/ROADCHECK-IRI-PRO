@@ -551,7 +551,7 @@ function addEventMarkerToMap(event){
 function onVert(raw){
   const iriM=computeIRI(raw),kmh=S.lastPos?.speed||0,iriC=spdCorr(iriM,kmh);
   const now=Date.now();
-  if(now-S.lastIRIUpd>65){S.lastIRIUpd=now;const _m=iriM,_c=iriC;queueUI('iri',()=>updateIRI(_m,_c));if(S.active&&!S.paused)queueUI('stats',updateStats);}
+  if(now-S.lastIRIUpd>65){S.lastIRIUpd=now;const _m=iriM,_c=iriC;queueUI('iri',()=>updateIRI(_m,_c));if(S.active&&!S.paused){queueUI('stats',updateStats);queueUI('comfort',()=>updateComfortUI(S.comfort.avLive));}}
   if(S.active&&!S.paused){S.iriMA+=iriM;S.iriCA+=iriC;S.iriN++;S.iriMax=Math.max(S.iriMax,iriC);S.iriMin=Math.min(S.iriMin,iriC);S.iriSum+=iriC;S.iriCnt++;if(iriC>5)registerChartMark('#EF4444','iri');}
   if(now-S.lastChartUpd>82){S.lastChartUpd=now;S.chartZ.push(+Math.abs(S.hpPrev).toFixed(3));S.chartI.push(+iriC.toFixed(3));if(S.chartZ.length>S.chartMax){S.chartZ.shift();S.chartI.shift();}updateCharts();}
 }
@@ -1575,11 +1575,13 @@ function updateComfortUI(av){
   const bf=$('comfortBarFill');
   if(bf){bf.style.width=pct+'%';bf.style.background=cls.color;}
   set('comfortVdv',getVDV('Z').toFixed(2));
-  // Actualizar tarjetas del overlay de medición
-  if(S.active){
-    const aM=$('aIriM');if(aM)aM.textContent=av.toFixed(3);
-    const aC=$('aIriC');if(aC){aC.textContent=cls.label;aC.style.color=cls.color;aC.style.fontSize='.52rem';}
-    const cd=$('aCond');if(cd){cd.textContent=getVDV('Z').toFixed(2);cd.style.color='var(--amber)';}
+  // Badge de confort en modo combinado (BUG 3)
+  const badge=$('measComfortBadge');
+  if(badge){
+    const isComboMode=S.activeModes.has('comfort')&&(S.activeModes.has('iri')||S.activeModes.has('urban'));
+    badge.classList.toggle('hidden',!S.active||!isComboMode);
+    const mcbVal=$('mcbVal');
+    if(mcbVal){mcbVal.textContent=cls.label;mcbVal.style.color=cls.color;}
   }
 }
 function getVDV(axis){return Math.pow(Math.max(0,S.comfort['sumPow4'+axis]),0.25);}
