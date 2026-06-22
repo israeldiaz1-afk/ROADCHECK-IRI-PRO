@@ -1207,8 +1207,49 @@ function trackSampleRate(timestamp){
   }
 }
 
-function onComfortSample(x,y,z,ts){/* implemented in Fase 3 */}
-function computeLiveComfort(){/* implemented in Fase 3 */}
+// ─ comfort sample processing (Fase 3) ─────────
+const COMFORT_K_FACTORS={kx:1.4,ky:1.4,kz:1.0};
+
+function onComfortSample(x,y,z,timestamp){
+  trackSampleRate(timestamp);
+  const cf=S.comfort;
+  if(!cf.filtersZ)rebuildComfortFilters(cf.fsActual);
+  const g=S.grav;if(!g)return;
+  const vertRaw=x*g.x+y*g.y+z*g.z-S.gravMag;
+  // Proyección horizontal ortogonal al eje vertical (aproximación V1)
+  const vertX=x-(x*g.x)*g.x;
+  const vertY=y-(y*g.y)*g.y;
+  const wZ=cf.filtersZ(vertRaw);
+  const wX=cf.filtersX(vertX);
+  const wY=cf.filtersY(vertY);
+  updateRunningRMSComfort('Z',wZ);
+  updateRunningRMSComfort('X',wX);
+  updateRunningRMSComfort('Y',wY);
+  accumulateVDV(wZ,wX,wY,timestamp);
+  computeLiveComfort();
+}
+function updateRunningRMSComfort(axis,sample){
+  const key='rmsWindow'+axis,cf=S.comfort;
+  cf[key].push(sample);
+  const maxLen=Math.round(cf.fsActual*1.0);
+  if(cf[key].length>maxLen)cf[key].shift();
+}
+function rmsOf(arr){if(!arr.length)return 0;return Math.sqrt(arr.reduce((s,v)=>s+v*v,0)/arr.length);}
+function accumulateVDV(wZ,wX,wY,timestamp){
+  const cf=S.comfort;
+  const dt=cf._lastVdvTs?(timestamp-cf._lastVdvTs)/1000:0.0167;
+  cf._lastVdvTs=timestamp;
+  cf.sumPow4Z+=Math.pow(Math.abs(wZ),4)*dt;
+  cf.sumPow4X+=Math.pow(Math.abs(wX),4)*dt;
+  cf.sumPow4Y+=Math.pow(Math.abs(wY),4)*dt;
+}
+function computeLiveComfort(){
+  const cf=S.comfort;
+  const awZ=rmsOf(cf.rmsWindowZ),awX=rmsOf(cf.rmsWindowX),awY=rmsOf(cf.rmsWindowY);
+  const av=Math.sqrt((COMFORT_K_FACTORS.kx**2)*awX**2+(COMFORT_K_FACTORS.ky**2)*awY**2+(COMFORT_K_FACTORS.kz**2)*awZ**2);
+  cf.avLive=av;
+  updateComfortUI(av);
+}
 function updateComfortUI(av){/* implemented in Fase 4 */}
 function classifyComfort(av){return{level:'no_confortable',label:'No confortable',color:'#10B981'};}
 function getVDV(axis){return Math.pow(Math.max(0,S.comfort['sumPow4'+axis]),0.25);}
