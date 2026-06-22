@@ -353,6 +353,16 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
         <div class="urban-last-event" id="uLastEvent">Sin eventos detectados aún</div>
       </div>
 
+      <div class="comfort-panel hidden" id="comfortPanel">
+        <div class="comfort-main">
+          <span class="comfort-value" id="comfortAv">0.000</span>
+          <span class="comfort-unit">m/s²</span>
+        </div>
+        <div class="comfort-level" id="comfortLevel">No confortable</div>
+        <div class="comfort-bar"><div class="comfort-bar-fill" id="comfortBarFill"></div></div>
+        <div class="comfort-vdv">VDV sesión: <span id="comfortVdv">0.00</span> m/s<sup>1.75</sup></div>
+      </div>
+
       <!-- MAP — clamp height, no inline style needed -->
       <div class="map-wrap">
         <div id="mapMain"></div>
@@ -418,7 +428,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
           <button class="btn btn-xs btn-sec" id="btnAvg" onclick="toggleAvg()">Promediar solapadas</button>
         </div>
       </div>
-      <select class="view-sel" id="viewMode" onchange="refreshVisor()"><option value="iri_c" selected>IRI Corregido</option><option value="iri_m">IRI Medido</option><option value="urban_events">Eventos Urbanos (Baches)</option></select>
+      <select class="view-sel" id="viewMode" onchange="refreshVisor()"><option value="iri_c" selected>IRI Corregido</option><option value="iri_m">IRI Medido</option><option value="urban_events">Eventos Urbanos (Baches)</option><option value="comfort_heatmap">Confort de Marcha</option></select>
       <div class="visor-map"><div id="mapVisor"></div></div>
       <div class="leg-row" style="justify-content:center">
         <div class="leg-item"><div class="leg-dot" style="background:var(--good)"></div>BUENO ≤2.5</div>

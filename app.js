@@ -17,7 +17,7 @@ const S={
   chartMain:null,chartMeas:null,chartDetail:null,
   chartZ:[],chartI:[],chartMax:80,lastChartUpd:0,lastIRIUpd:0,
   vehicleId:null,selRoutes:new Set(),showAvg:false,
-  curDetail:null,curDetailRoute:null,overlapCb:null,pendingRoute:null,
+  curDetail:null,curDetailRoute:null,overlapCb:null,pendingRoute:null,pendingComfortRoute:null,
   timerRef:null,timerStart:0,
   mode:'iri',
   urbanBuf:[],urbanBufMax:90,
@@ -25,6 +25,18 @@ const S={
   noiseBaseline:{mean:0,std:0.05,samples:[]},
   _lastEventTs:null,
   groundTruth:[],
+  comfort:{
+    vehicleProfile:'turismo',
+    fsActual:60,
+    filtersZ:null,filtersX:null,filtersY:null,
+    rmsWindowZ:[],rmsWindowX:[],rmsWindowY:[],
+    avLive:0,
+    sumPow4Z:0,sumPow4X:0,sumPow4Y:0,
+    sumSqZ:0,sumSqX:0,sumSqY:0,sumN:0,
+    segments:[],pts:[],_currentSegPts:[],
+    _dtBuffer:[],_lastTs:null,_lastVdvTs:null,
+    _segStartPow4Z:0,_segDist:0
+  },
   mapMain:null,mapMeas:null,mapVisor:null,mapDetail:null,
   lineMain:null,lineMeas:null,mkMain:null,mkMeas:null,mkDetail:null,
 };
@@ -92,8 +104,9 @@ function setMode(mode){
   document.querySelectorAll('.mode-btn').forEach(b=>{
     b.classList.toggle('active',b.dataset.mode===mode);
   });
-  $('iriPanel')?.classList.toggle('hidden',mode==='urban');
-  $('urbanPanel')?.classList.toggle('hidden',mode==='iri');
+  $('iriPanel')?.classList.toggle('hidden',mode!=='iri');
+  $('urbanPanel')?.classList.toggle('hidden',mode!=='urban');
+  $('comfortPanel')?.classList.toggle('hidden',mode!=='comfort');
 }
 const capitalize=s=>s.charAt(0).toUpperCase()+s.slice(1);
 function allVeh(){return[...VEHICLES,...JSON.parse(localStorage.getItem('rc_cveh')||'[]')];}
@@ -145,10 +158,18 @@ function onGPS(pos){
   }
   const st=kmh>1?kmh.toFixed(1)+' km/h':'0 km/h';
   set('speedPill',st);set('measSpeed',st);
-  if(S.active&&!S.paused&&S.calibrated&&S.iriN>0){
+  if(S.active&&!S.paused&&S.calibrated&&S.mode!=='comfort'&&S.iriN>0){
     S.pts.push({ts:Date.now(),lat,lon,speed:kmh,iri_m:S.iriMA/S.iriN,iri_c:S.iriCA/S.iriN});
     S.iriMA=0;S.iriCA=0;S.iriN=0;
     const sn=Math.floor(S.dist/C.segLen);if(sn>S.segCount){S.segCount=sn;set('aSegs',S.segCount.toString());}
+  }
+  if(S.active&&!S.paused&&S.calibrated&&S.mode==='comfort'){
+    const cf=S.comfort;
+    const pt={ts:Date.now(),lat,lon,speed:kmh,av:cf.avLive};
+    cf.pts.push(pt);
+    cf._currentSegPts.push(pt);
+    cf._segDist+=(kmh>2?d:0);
+    if(cf._segDist>=C.segLen)closeComfortSegment();
   }
   S.lastPos={lat,lon,speed:kmh};
 }
@@ -189,6 +210,7 @@ function onRaw(x,y,z){
   const g=S.grav;
   const raw=Math.abs(x*g.x+y*g.y+z*g.z-S.gravMag);
   if(S.mode==='urban'){feedUrbanBuffer(x,y,z,Date.now());}
+  else if(S.mode==='comfort'){onComfortSample(x,y,z,Date.now());}
   onVert(raw);
 }
 
@@ -645,6 +667,16 @@ function startMeasurement(){
     set('uEventCount','0');set('uGraveCount','0');set('uModCount','0');
     const lEl=$('uLastEvent');if(lEl)lEl.textContent='Sin eventos detectados aún';
     const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='block';
+  }else if(S.mode==='comfort'){
+    // Modo confort: resetear acumuladores
+    const cf=S.comfort;
+    cf.pts=[];cf.segments=[];cf._currentSegPts=[];
+    cf.sumPow4Z=0;cf.sumPow4X=0;cf.sumPow4Y=0;
+    cf.sumSqZ=0;cf.sumSqX=0;cf.sumSqY=0;cf.sumN=0;
+    cf.avLive=0;cf.rmsWindowZ=[];cf.rmsWindowX=[];cf.rmsWindowY=[];
+    cf._dtBuffer=[];cf._lastTs=null;cf._lastVdvTs=null;
+    cf._segStartPow4Z=0;cf._segDist=0;
+    rebuildComfortFilters(cf.fsActual);
   }else{
     // Modo IRI: resetear acumuladores IRI
     S.pts=[];S.segCount=0;
@@ -667,6 +699,7 @@ function stopMeasurement(){
   S.active=false;S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
   const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='none';
   if(S.mode==='urban'){stopUrbanSession();return;}
+  if(S.mode==='comfort'){stopComfortSession();return;}
   if(S.pts.length<2){toast('Sin datos suficientes');return;}
   const segs=segmentize(S.pts,C.segLen),allC=S.pts.map(p=>p.iri_c),allM=S.pts.map(p=>p.iri_m);
   S.pendingRoute={id:Date.now().toString(),date:new Date().toISOString(),pts:S.pts,segs,
@@ -683,12 +716,18 @@ function stopUrbanSession(){
   if(S.groundTruth&&S.groundTruth.length>0)showValidationResults();
 }
 function confirmSave(){
+  if(S.pendingComfortRoute){
+    S.pendingComfortRoute.name=$('routeNameInput').value.trim()||fmtD(Date.parse(S.pendingComfortRoute.date));
+    saveComfortRoute(S.pendingComfortRoute);$('routeNameModal').classList.add('hidden');
+    toast('✅ Ruta de confort · a_v '+S.pendingComfortRoute.avgAv.toFixed(3)+' m/s²');
+    S.pendingComfortRoute=null;return;
+  }
   if(!S.pendingRoute)return;
   S.pendingRoute.name=$('routeNameInput').value.trim()||fmtD(Date.parse(S.pendingRoute.date));
   saveRoute(S.pendingRoute);$('routeNameModal').classList.add('hidden');
   toast('✅ Ruta guardada · IRI '+S.pendingRoute.avgC.toFixed(2)+' m/km');S.pendingRoute=null;
 }
-function discardRoute(){S.pendingRoute=null;$('routeNameModal').classList.add('hidden');toast('Ruta descartada');}
+function discardRoute(){S.pendingRoute=null;S.pendingComfortRoute=null;$('routeNameModal').classList.add('hidden');toast('Ruta descartada');}
 function startTimer(){S.timerStart=Date.now();S.timerRef=setInterval(()=>{if(S.paused)return;const e=Math.floor((Date.now()-S.timerStart)/1000);set('measTimer',String(Math.floor(e/60)).padStart(2,'0')+':'+String(e%60).padStart(2,'0'));},500);}
 function stopTimer(){clearInterval(S.timerRef);S.timerRef=null;}
 function segmentize(pts,sLen){
@@ -1095,6 +1134,41 @@ if(pts.length)map.fitBounds(L.latLngBounds(pts),{padding:[20,20]});
 <\/script></body></html>`;
   dlBlob(html,'text/html','informe_urban_'+Date.now().toString().slice(-6)+'.html');
   toast('Informe HTML urbano exportado ✓');
+}
+
+// ─ comfort storage ────────────────────────────
+function allComfortRoutes(){try{return JSON.parse(localStorage.getItem('rc_comfort_routes')||'[]');}catch(e){return[];}}
+function saveComfortRoute(r){try{const rs=allComfortRoutes();rs.push(r);localStorage.setItem('rc_comfort_routes',JSON.stringify(rs));}catch(e){toast('Error guardando ruta de confort');}}
+function delComfortRoute(id){localStorage.setItem('rc_comfort_routes',JSON.stringify(allComfortRoutes().filter(r=>r.id!==id)));}
+
+// ─ comfort filters (Fase 2) ───────────────────
+function rebuildComfortFilters(fs){/* implemented in Fase 2 */}
+function onComfortSample(x,y,z,ts){/* implemented in Fase 3 */}
+function computeLiveComfort(){/* implemented in Fase 3 */}
+function updateComfortUI(av){/* implemented in Fase 4 */}
+function classifyComfort(av){return{level:'no_confortable',label:'No confortable',color:'#10B981'};}
+function getVDV(axis){return Math.pow(Math.max(0,S.comfort['sumPow4'+axis]),0.25);}
+function closeComfortSegment(){
+  const cf=S.comfort;
+  if(!cf._currentSegPts.length)return;
+  const avVals=cf._currentSegPts.map(p=>p.av);
+  const avAvg=Math.sqrt(avVals.reduce((s,v)=>s+v*v,0)/avVals.length||0);
+  const cls=classifyComfort(avAvg);
+  cf.segments.push({pts:cf._currentSegPts.map(p=>({lat:p.lat,lon:p.lon})),avAvg,vdv:getVDV('Z'),level:cls.level,color:cls.color});
+  cf._currentSegPts=[];cf._segDist=0;cf._segStartPow4Z=cf.sumPow4Z;
+  set('aSegs',cf.segments.length.toString());
+}
+function stopComfortSession(){
+  const cf=S.comfort;
+  if(cf._currentSegPts.length>0)closeComfortSegment();
+  if(cf.pts.length<2){toast('Sin datos de confort suficientes');return;}
+  const allAv=cf.pts.map(p=>p.av);
+  const avgAv=Math.sqrt(allAv.reduce((s,v)=>s+v*v,0)/allAv.length);
+  S.pendingComfortRoute={id:Date.now().toString(),date:new Date().toISOString(),type:'comfort',name:'',
+    pts:cf.pts,segments:cf.segments,avgAv,
+    vdvSession:{z:getVDV('Z'),x:getVDV('X'),y:getVDV('Y')},
+    vehicleProfile:cf.vehicleProfile,fsUsed:cf.fsActual,dist:S.dist};
+  $('routeNameInput').value='';$('routeNameModal').classList.remove('hidden');
 }
 
 // ─ Garage ─────────────────────────────────────
