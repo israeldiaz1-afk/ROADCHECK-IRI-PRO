@@ -1,6 +1,6 @@
-/* ROADCHECK IRI · app.js v3.2
-   Fixes: OSM tiles (no black bg), chart axes display:false (no overlap),
-   detail map explicit height (no black), bidirectional map↔chart sync */
+/* PAVEMENT CHECK · app.js v4.0
+   Multi-mode: IRI (Carretera) + Urbano + Confort de Marcha (ISO 2631-1)
+   Fixes: OSM tiles, chart axes, detail map, bidirectional map↔chart sync */
 
 const DEF={coefA:2.0,coefB:.50,vRef:80,vExp:.50,vMin:10,segLen:100,noiseFloor:.05,freq:60};
 let C={...DEF};
