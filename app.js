@@ -1070,27 +1070,71 @@ function expKML(id){
   r.segs.forEach((s,i)=>{const st=s.iriC<=2.5?'g':s.iriC<=5?'f':'p';k+='<Placemark><name>Tramo '+(i+1)+'</name><description>IRI: '+(s.iriC||0).toFixed(3)+' | '+(s.dist||0).toFixed(0)+'m | '+iLbl(s.iriC)+'</description><styleUrl>#'+st+'</styleUrl><LineString><tessellate>1</tessellate><coordinates>'+(s.pts||[]).map(p=>(p.lon||0).toFixed(7)+','+p.lat.toFixed(7)+',0').join('\n')+'</coordinates></LineString></Placemark>\n';});
   k+='</Document></kml>';dlBlob(k,'application/vnd.google-earth.kml+xml','roadcheck_'+r.id.slice(-6)+'.kml');toast('KML exportado');
 }
-function expXLSX(id){const r=allRoutes().find(r=>r.id===id);if(!r?.pts)return;loadXLSX(()=>doXLSX(r));}
+function expXLSX(id){const r=allRoutes().find(r=>r.id===id);if(!r)return;loadXLSX(()=>doXLSX(r));}
 function loadXLSX(cb){if(typeof XLSX!=='undefined'){cb();return;}const s=document.createElement('script');s.src='https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js';s.onload=cb;s.onerror=()=>toast('Error cargando SheetJS');document.head.appendChild(s);}
 function doXLSX(r){
-  const wb=XLSX.utils.book_new();let da=0;
-  const rws=[['#','Fecha','Lat','Lon','Dist.(m)','Vel.(km/h)','IRI_Medido','IRI_Corregido','Condición']];
-  r.pts.forEach((p,i)=>{if(i>0)da+=geo(r.pts[i-1].lat,r.pts[i-1].lon,p.lat,p.lon);rws.push([i+1,fmtD(p.ts),p.lat.toFixed(7),p.lon.toFixed(7),da.toFixed(1),(p.speed||0).toFixed(1),(p.iri_m||0).toFixed(4),(p.iri_c||0).toFixed(4),iLbl(p.iri_c)]);});
-  const ws1=XLSX.utils.aoa_to_sheet(rws);ws1['!cols']=[{wch:5},{wch:18},{wch:13},{wch:13},{wch:11},{wch:11},{wch:13},{wch:14},{wch:10}];XLSX.utils.book_append_sheet(wb,ws1,'Datos');
-  const sr=[['Tramo','IRI Medido','IRI Corregido','Vel.(km/h)','Dist.(m)','Condición']];
-  (r.segs||[]).forEach((s,i)=>sr.push([i+1,(s.iriM||0).toFixed(3),(s.iriC||0).toFixed(3),(s.speedAvg||0).toFixed(1),(s.dist||0).toFixed(1),iLbl(s.iriC)]));
-  const ws2=XLSX.utils.aoa_to_sheet(sr);XLSX.utils.book_append_sheet(wb,ws2,'Segmentos');
-  const ws3=XLSX.utils.aoa_to_sheet([['ROADCHECK IRI — RESUMEN'],[''],['Nombre',r.name||''],['Fecha',fmtD(Date.parse(r.date))],['Distancia (m)',r.dist.toFixed(1)],['IRI Medido medio',(r.avgM||0).toFixed(4)],['IRI Corregido medio',(r.avgC||0).toFixed(4)],['Condición',iLbl(r.avgC)],['Segmentos',(r.segs||[]).length],['Puntos GPS',r.pts.length]]);
-  ws3['!cols']=[{wch:26},{wch:22}];XLSX.utils.book_append_sheet(wb,ws3,'Resumen');
-  XLSX.writeFile(wb,'roadcheck_'+r.id.slice(-6)+'.xlsx');toast('Excel exportado ✓');
+  const wb=XLSX.utils.book_new();
+  const modes=r.modesUsed||['iri'];
+
+  // IRI sheets
+  if(modes.includes('iri')&&r.pts?.length){
+    let da=0;
+    const rws=[['#','Fecha','Lat','Lon','Dist.(m)','Vel.(km/h)','IRI_Medido','IRI_Corregido','Condición']];
+    r.pts.forEach((p,i)=>{if(i>0)da+=geo(r.pts[i-1].lat,r.pts[i-1].lon,p.lat,p.lon);rws.push([i+1,fmtD(p.ts),p.lat.toFixed(7),p.lon.toFixed(7),da.toFixed(1),(p.speed||0).toFixed(1),(p.iri_m||0).toFixed(4),(p.iri_c||0).toFixed(4),iLbl(p.iri_c)]);});
+    const ws1=XLSX.utils.aoa_to_sheet(rws);ws1['!cols']=[{wch:5},{wch:18},{wch:13},{wch:13},{wch:11},{wch:11},{wch:13},{wch:14},{wch:10}];XLSX.utils.book_append_sheet(wb,ws1,'IRI_Datos');
+    const sr=[['Tramo','IRI Medido','IRI Corregido','Vel.(km/h)','Dist.(m)','Condición']];
+    (r.segs||[]).forEach((s,i)=>sr.push([i+1,(s.iriM||0).toFixed(3),(s.iriC||0).toFixed(3),(s.speedAvg||0).toFixed(1),(s.dist||0).toFixed(1),iLbl(s.iriC)]));
+    const ws2=XLSX.utils.aoa_to_sheet(sr);XLSX.utils.book_append_sheet(wb,ws2,'IRI_Segmentos');
+  }
+
+  // Urban sheet
+  if(modes.includes('urban')&&r.urbanData?.events?.length){
+    const ev=r.urbanData.events;
+    const uw=[['#','Fecha','Lat','Lon','Vel.(km/h)','Tipo','Severidad','Score','Confirmado']];
+    ev.forEach((e,i)=>uw.push([i+1,fmtD(e.ts),(e.lat||0).toFixed(7),(e.lon||0).toFixed(7),(e.speed||0).toFixed(1),e.type||'',e.severity||'',+(e.score||0).toFixed(1),e.confirmed?'Sí':'No']));
+    const wsu=XLSX.utils.aoa_to_sheet(uw);wsu['!cols']=[{wch:5},{wch:18},{wch:13},{wch:13},{wch:11},{wch:12},{wch:11},{wch:8},{wch:11}];
+    XLSX.utils.book_append_sheet(wb,wsu,'Urbano_Eventos');
+  }
+
+  // Comfort sheet
+  if(modes.includes('comfort')&&r.comfortData?.pts?.length){
+    const cd=r.comfortData;
+    const cw=[['#','Fecha','Lat','Lon','Vel.(km/h)','a_v (m/s²)','Nivel ISO 2631-1']];
+    cd.pts.forEach((p,i)=>cw.push([i+1,fmtD(p.ts),(p.lat||0).toFixed(7),(p.lon||0).toFixed(7),(p.speed||0).toFixed(1),(p.av||0).toFixed(4),classifyComfort(p.av||0).label]));
+    const wsc=XLSX.utils.aoa_to_sheet(cw);wsc['!cols']=[{wch:5},{wch:18},{wch:13},{wch:13},{wch:11},{wch:13},{wch:28}];
+    XLSX.utils.book_append_sheet(wb,wsc,'Confort_Datos');
+    const sr2=[['Segmento','a_v medio (m/s²)','VDV (m/s^1.75)','Nivel','Puntos GPS']];
+    (cd.segments||[]).forEach((s,i)=>sr2.push([i+1,(s.avAvg||0).toFixed(4),(s.vdv||0).toFixed(4),s.level,(s.pts||[]).length]));
+    const wsc2=XLSX.utils.aoa_to_sheet(sr2);XLSX.utils.book_append_sheet(wb,wsc2,'Confort_Segmentos');
+  }
+
+  // Summary sheet
+  const sum=[['PAVEMENT CHECK — RESUMEN'],[''],
+    ['Nombre',r.name||''],['Fecha',fmtD(Date.parse(r.date))],
+    ['Modos usados',modes.join(', ')],
+    ['Distancia (m)',(r.dist||0).toFixed(1)],['']
+  ];
+  if(modes.includes('iri')&&r.avgC!=null){sum.push(['IRI Corregido medio',(r.avgC||0).toFixed(4)]);sum.push(['IRI Medido medio',(r.avgM||0).toFixed(4)]);sum.push(['Condición IRI',iLbl(r.avgC)]);sum.push(['']);}
+  if(modes.includes('urban')&&r.urbanData){sum.push(['Eventos urbanos detectados',r.urbanData.events.length]);sum.push(['']);}
+  if(modes.includes('comfort')&&r.comfortData){const cd=r.comfortData;sum.push(['a_v medio sesión (m/s²)',(cd.avgAv||0).toFixed(4)]);sum.push(['Nivel confort',classifyComfort(cd.avgAv||0).label]);sum.push(['VDV Z (m/s^1.75)',((cd.vdvSession?.z)||0).toFixed(4)]);sum.push(['fs usado (Hz)',(cd.fsUsed||60).toFixed(1)]);sum.push(['']);sum.push(['ADVERTENCIA METODOLÓGICA']);sum.push(['',COMFORT_DISCLAIMER]);}
+  const ws3=XLSX.utils.aoa_to_sheet(sum);ws3['!cols']=[{wch:28},{wch:70}];XLSX.utils.book_append_sheet(wb,ws3,'Resumen');
+  XLSX.writeFile(wb,'pavcheck_'+r.id.slice(-6)+'.xlsx');toast('Excel exportado ✓');
 }
 function expHTML(id){
-  const r=allRoutes().find(r=>r.id===id);if(!r?.pts)return;
+  const r=allRoutes().find(r=>r.id===id);if(!r)return;
+  const modes=r.modesUsed||['iri'];
+  // Unified route: delegate comfort-only to comfort exporter; multi-mode builds combined HTML
+  if(!modes.includes('iri')&&modes.includes('comfort')&&!modes.includes('urban')){expComfortHTML(id,r);return;}
+  if(!r?.pts)return;
   let da=0;const dists=[0],iM=[],iC=[],sp=[];
   r.pts.forEach((p,i)=>{if(i>0){da+=geo(r.pts[i-1].lat,r.pts[i-1].lon,p.lat,p.lon);dists.push(da);}iM.push(+(p.iri_m||0).toFixed(4));iC.push(+(p.iri_c||0).toFixed(4));sp.push(+(p.speed||0).toFixed(1));});
   const sH=(r.segs||[]).map((s,i)=>`<tr><td>${i+1}</td><td>${(s.iriM||0).toFixed(3)}</td><td style="font-weight:700;color:${iCol(s.iriC)}">${(s.iriC||0).toFixed(3)}</td><td>${(s.speedAvg||0).toFixed(1)}</td><td>${(s.dist||0).toFixed(0)}</td><td style="color:${iCol(s.iriC)}">${iLbl(s.iriC)}</td></tr>`).join('');
   const ptsJ=JSON.stringify(r.pts.map(p=>({lat:p.lat,lon:p.lon,iri_m:+(p.iri_m||0).toFixed(4),iri_c:+(p.iri_c||0).toFixed(4),speed:+(p.speed||0).toFixed(1)})));
   const segsJ=JSON.stringify((r.segs||[]).map(s=>({pts:(s.pts||[]).map(p=>({lat:p.lat,lon:p.lon})),iriC:+(s.iriC||0).toFixed(3),iriM:+(s.iriM||0).toFixed(3),dist:+(s.dist||0).toFixed(1)})));
+  // Extra sections for urban and comfort modes
+  const urbanSection=modes.includes('urban')&&r.urbanData?.events?.length?`<div class="dv"></div><h2>Eventos Urbanos (${r.urbanData.events.length})</h2><table><thead><tr><th>#</th><th>Tipo</th><th>Severidad</th><th>Score</th><th>Vel.(km/h)</th><th>Confirmado</th></tr></thead><tbody>${r.urbanData.events.map((e,i)=>`<tr><td>${i+1}</td><td>${escH(e.type||'')}</td><td style="color:${e.severity==='grave'?'#EF4444':e.severity==='moderado'?'#F59E0B':'#10B981'}">${e.severity||''}</td><td>${(e.score||0).toFixed(1)}</td><td>${(e.speed||0).toFixed(1)}</td><td>${e.confirmed?'Sí':'No'}</td></tr>`).join('')}</tbody></table>`:'';
+  const cd=r.comfortData;
+  const comfortSection=modes.includes('comfort')&&cd?`<div class="dv"></div><h2>Confort de Marcha (ISO 2631-1)</h2><div class="cards"><div class="card"><div class="v">${(cd.avgAv||0).toFixed(3)}</div><div class="l">a_v medio (m/s²)</div></div><div class="card"><div class="v" style="font-size:.75rem;color:${classifyComfort(cd.avgAv||0).color}">${classifyComfort(cd.avgAv||0).label}</div><div class="l">Nivel</div></div><div class="card"><div class="v">${((cd.vdvSession?.z)||0).toFixed(3)}</div><div class="l">VDV_Z (m/s^1.75)</div></div></div><p style="font-size:.56rem;color:#5A7E9C;margin-bottom:8px">${escH(COMFORT_DISCLAIMER)}</p>`:'';
   const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes"><title>Roadcheck IRI</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
@@ -1113,6 +1157,7 @@ function expHTML(id){
 <div class="dv"></div>
 <h2>Datos por Segmento</h2>
 <table><thead><tr><th>#</th><th>IRI Med.</th><th>IRI Corr.</th><th>Vel.(km/h)</th><th>Dist.(m)</th><th>Condición</th></tr></thead><tbody>${sH}</tbody></table>
+${urbanSection}${comfortSection}
 </div>
 <script>
 const PTS=${ptsJ},SEGS=${segsJ},DS=${JSON.stringify(dists.map(d=>+d.toFixed(0)))},IC=${JSON.stringify(iC)},IM=${JSON.stringify(iM)},SP=${JSON.stringify(sp)};
@@ -1130,7 +1175,7 @@ const c1=new Chart(document.getElementById('c1'),{type:'line',plugins:[vl],data:
 const c2=new Chart(document.getElementById('c2'),{type:'line',plugins:[vl],data:{labels:DS,datasets:[{label:'IRI Medido',data:IM,borderColor:'#3A5F7A',tension:.3,pointRadius:0,fill:false},{label:'IRI Corregido',data:IC,borderColor:'#F59E0B',tension:.3,pointRadius:0,fill:false,segment:{borderColor:c=>ic(c.p1.raw)}}]},options:{responsive:true,maintainAspectRatio:false,animation:false,onClick(e){const el=this.getElementsAtEventForMode(e,'index',{intersect:false},true);if(el.length)hl(el[0].index);},scales:{x:{ticks:{color:'#3A5F7A',font:{size:11},maxTicksLimit:8}},y:{min:0,title:{display:true,text:'IRI (m/km)',color:'#5A7E9C',font:{size:12}},ticks:{color:'#5A7E9C',font:{size:11}},grid:{color:'rgba(14,165,233,.07)'}}},plugins:{legend:lg,zoom:zo,tooltip:{callbacks:{title:i=>'Dist: '+i[0].label+' m',label:i=>i.dataset.label+': '+parseFloat(i.raw).toFixed(2)}}}}});
 function hl(i){const p=PTS[i];if(!p)return;if(!map.hasLayer(hlMk))hlMk.addTo(map);hlMk.setLatLng([p.lat,p.lon]);map.panTo([p.lat,p.lon]);c1._hl=i;c1.update('none');c2._hl=i;c2.update('none');document.getElementById('pi').innerHTML='Pto <span>#'+(i+1)+'<\/span> · Lat <span>'+p.lat.toFixed(5)+'<\/span> · Lon <span>'+p.lon.toFixed(5)+'<\/span> · Vel <span>'+p.speed+' km/h<\/span> · IRI_m <span style="color:#0EA5E9">'+p.iri_m.toFixed(3)+'<\/span> · IRI_c <span style="color:'+ic(p.iri_c)+'">'+p.iri_c.toFixed(3)+'<\/span>';}
 <\/script></body></html>`;
-  dlBlob(html,'text/html','informe_roadcheck_'+r.id.slice(-6)+'.html');toast('Informe HTML exportado ✓');
+  dlBlob(html,'text/html','pavcheck_'+r.id.slice(-6)+'.html');toast('Informe HTML exportado ✓');
 }
 
 // ─ urban validation (Fase 7) ──────────────────
@@ -1301,8 +1346,16 @@ function expComfortXLSX(id){
   });
 }
 
-function expComfortHTML(id){
-  const r=allComfortRoutes().find(r=>r.id===id);if(!r?.pts)return;
+function expComfortHTML(id,rOverride){
+  const r=rOverride||(allComfortRoutes().find(r=>r.id===id));
+  if(!r)return;
+  const pts=r.pts||(r.comfortData?.pts);const segments=r.segments||(r.comfortData?.segments);
+  const avgAv=r.avgAv||(r.comfortData?.avgAv)||0;const dist=r.dist||0;
+  const vdvSession=r.vdvSession||(r.comfortData?.vdvSession)||{z:0,x:0,y:0};
+  const fsUsed=r.fsUsed||(r.comfortData?.fsUsed)||60;
+  if(!pts?.length)return;
+  // Remap to expected field names
+  Object.assign(r,{pts,segments,avgAv,dist,vdvSession,fsUsed});
   const ptsJ=JSON.stringify(r.pts.map(p=>({lat:p.lat,lon:p.lon,av:+(p.av||0).toFixed(4),speed:+(p.speed||0).toFixed(1)})));
   const segsJ=JSON.stringify((r.segments||[]).map(s=>({pts:s.pts||[],avAvg:+(s.avAvg||0).toFixed(4),vdv:+(s.vdv||0).toFixed(4),color:s.color||'#888',level:s.level})));
   const segRows=(r.segments||[]).map((s,i)=>`<tr><td>${i+1}</td><td style="font-weight:700;color:${s.color||'#888'}">${(s.avAvg||0).toFixed(3)}</td><td>${(s.vdv||0).toFixed(3)}</td><td style="color:${s.color||'#888'}">${s.level}</td></tr>`).join('');
