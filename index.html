@@ -62,6 +62,9 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .mc-ico{font-size:.9rem;line-height:1}
 .mc-lbl{font-size:.44rem;letter-spacing:.5px}
 
+/* ── PANELS CONTAINER ── */
+#mainPanelsContainer{display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+
 /* ── IRI PANEL ── */
 .iri-panel{flex-shrink:0;background:var(--s1);border:1px solid var(--ln2);border-radius:var(--r8);overflow:hidden}
 .iri-row{display:flex}
@@ -225,6 +228,17 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .comfort-bar-fill{height:100%;width:0%;transition:width .4s,background .4s;border-radius:2px}
 .comfort-vdv{padding:5px 14px 8px;border-top:1px solid var(--ln);font-size:.56rem;color:var(--dim);font-family:var(--mono)}
 
+/* ── COMPACT MODE (2 paneles apilados) ── */
+.iri-panel.compact .iri-val{font-size:1.1rem}
+.iri-panel.compact .iri-scale{height:2px}
+.urban-panel.compact .u-val{font-size:1.1rem}
+.urban-panel.compact .urban-last-event{display:none}
+.comfort-panel.compact .comfort-value{font-size:1.1rem}
+.comfort-panel.compact .comfort-bar{height:2px;margin:0 10px 5px}
+.comfort-panel.compact .comfort-vdv{display:none}
+.iri-panel.compact .iri-col{padding:5px 11px}
+.urban-panel.compact .u-stat{padding:5px 11px}
+
 /* ── MODALS ── */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);display:flex;justify-content:center;align-items:flex-end;z-index:2000}
 .modal{background:var(--s1);border:1px solid var(--ln2);border-radius:12px 12px 0 0;padding:16px 14px calc(16px + var(--safe-b));width:100%;max-width:480px;max-height:88vh;overflow-y:auto}
@@ -336,39 +350,41 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
         </button>
       </div>
 
-      <div class="iri-panel" id="iriPanel">
-        <div class="iri-row">
-          <div class="iri-col">
-            <div class="iri-tag">IRI Medido</div>
-            <div class="iri-val" id="iriM">0.00</div>
-            <div class="iri-cond">m / km</div>
+      <div id="mainPanelsContainer">
+        <div class="iri-panel" id="iriPanel">
+          <div class="iri-row">
+            <div class="iri-col">
+              <div class="iri-tag">IRI Medido</div>
+              <div class="iri-val" id="iriM">0.00</div>
+              <div class="iri-cond">m / km</div>
+            </div>
+            <div class="iri-col">
+              <div class="iri-tag">IRI Corregido</div>
+              <div class="iri-val" id="iriC">0.00</div>
+              <div class="iri-cond" id="iriCond" style="color:var(--dim)">Sin movimiento</div>
+            </div>
           </div>
-          <div class="iri-col">
-            <div class="iri-tag">IRI Corregido</div>
-            <div class="iri-val" id="iriC">0.00</div>
-            <div class="iri-cond" id="iriCond" style="color:var(--dim)">Sin movimiento</div>
+          <div class="iri-scale"><div class="iri-scale-bg"></div><div class="iri-cur" id="iriCur"></div></div>
+        </div>
+
+        <div class="urban-panel hidden" id="urbanPanel">
+          <div class="urban-stats">
+            <div class="u-stat"><span class="u-val" id="uEventCount">0</span><span class="u-lbl">Eventos</span></div>
+            <div class="u-stat"><span class="u-val" id="uGraveCount" style="color:var(--bad)">0</span><span class="u-lbl">Graves</span></div>
+            <div class="u-stat"><span class="u-val" id="uModCount" style="color:var(--fair)">0</span><span class="u-lbl">Moderados</span></div>
           </div>
+          <div class="urban-last-event" id="uLastEvent">Sin eventos detectados aún</div>
         </div>
-        <div class="iri-scale"><div class="iri-scale-bg"></div><div class="iri-cur" id="iriCur"></div></div>
-      </div>
 
-      <div class="urban-panel hidden" id="urbanPanel">
-        <div class="urban-stats">
-          <div class="u-stat"><span class="u-val" id="uEventCount">0</span><span class="u-lbl">Eventos</span></div>
-          <div class="u-stat"><span class="u-val" id="uGraveCount" style="color:var(--bad)">0</span><span class="u-lbl">Graves</span></div>
-          <div class="u-stat"><span class="u-val" id="uModCount" style="color:var(--fair)">0</span><span class="u-lbl">Moderados</span></div>
+        <div class="comfort-panel hidden" id="comfortPanel">
+          <div class="comfort-main">
+            <span class="comfort-value" id="comfortAv">0.000</span>
+            <span class="comfort-unit">m/s²</span>
+          </div>
+          <div class="comfort-level" id="comfortLevel">No confortable</div>
+          <div class="comfort-bar"><div class="comfort-bar-fill" id="comfortBarFill"></div></div>
+          <div class="comfort-vdv">VDV sesión: <span id="comfortVdv">0.00</span> m/s<sup>1.75</sup></div>
         </div>
-        <div class="urban-last-event" id="uLastEvent">Sin eventos detectados aún</div>
-      </div>
-
-      <div class="comfort-panel hidden" id="comfortPanel">
-        <div class="comfort-main">
-          <span class="comfort-value" id="comfortAv">0.000</span>
-          <span class="comfort-unit">m/s²</span>
-        </div>
-        <div class="comfort-level" id="comfortLevel">No confortable</div>
-        <div class="comfort-bar"><div class="comfort-bar-fill" id="comfortBarFill"></div></div>
-        <div class="comfort-vdv">VDV sesión: <span id="comfortVdv">0.00</span> m/s<sup>1.75</sup></div>
       </div>
 
       <!-- MAP — clamp height, no inline style needed -->
