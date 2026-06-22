@@ -138,6 +138,12 @@ function renderMainPanels(){
     panel.classList.toggle('compact',isActive&&n>1);
   });
 }
+function updateMeasPanel(){
+  const hasIRI=S.activeModes.has('iri');
+  const hasUrban=S.activeModes.has('urban');
+  $('measIRIPanel')?.classList.toggle('hidden',!hasIRI);
+  $('measUrbanPanel')?.classList.toggle('hidden',!hasUrban);
+}
 function recalcMainLayout(){
   const screenEl=$('tab-main');if(!screenEl)return;
   const mapWrap=$('mapMain')?.closest('.map-wrap');if(!mapWrap)return;
@@ -507,6 +513,14 @@ function onUrbanEventDetected(event){
     const el=$('uLastEvent');
     if(el)el.innerHTML=`${icons[event.type]||'❓'} ${capitalize(event.severity)} · score ${event.score.toFixed(0)} · ${event.speed.toFixed(0)} km/h`;
   });
+  queueUI('urban_meas',()=>{
+    const counts=S.urbanEvents.reduce((a,e)=>{a[e.severity]=(a[e.severity]||0)+1;return a;},{});
+    set('muLeve',(counts.leve||0).toString());
+    set('muMod',(counts.moderado||0).toString());
+    set('muGrave',(counts.grave||0).toString());
+    const last=S.urbanEvents[S.urbanEvents.length-1];
+    if(last){const icons={pothole:'🕳️',manhole:'⭕',speedbump:'⛰️',unknown:'❓'};const mu=$('muLastEvent');if(mu)mu.textContent=`${icons[last.type]||'❓'} ${last.type} · ${last.severity} · score ${last.score.toFixed(0)}`;}
+  });
 }
 
 function addEventMarkerToMap(event){
@@ -745,6 +759,7 @@ function startMeasurement(){
   }
 
   $('meas-sc').classList.remove('hidden');
+  updateMeasPanel();
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     initMeasMap();
     if(S.lastPos&&S.mapMeas)mapCenter(S.mapMeas,S.lastPos.lat,S.lastPos.lon,17);

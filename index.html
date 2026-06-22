@@ -297,6 +297,15 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .m-st .sv{font-family:var(--mono);font-size:.78rem;font-weight:700;color:var(--amber)}
 .m-btns{display:flex;gap:5px;flex-shrink:0}.m-btns .btn{flex:1;padding:11px;font-size:.68rem;letter-spacing:1px}
 
+/* ── MEAS URBAN PANEL ── */
+.meas-urban-panel{flex-shrink:0;background:var(--s1);border:1px solid var(--ln);border-radius:var(--r8);overflow:hidden}
+.meas-event-counts{display:flex}
+.mec{flex:1;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative}
+.mec+.mec::before{content:'';position:absolute;left:0;top:10%;height:80%;width:1px;background:var(--ln)}
+.mec-val{font-family:var(--mono);font-size:var(--fs-xxl);font-weight:700;line-height:1;color:var(--mid)}
+.mec-lbl{font-size:var(--fs-xs);color:var(--dim);font-family:var(--mono)}
+.meas-last-event{padding:6px 10px;font-family:var(--mono);font-size:var(--fs-xs);color:var(--dim);border-top:1px solid var(--ln);min-height:28px;display:flex;align-items:center}
+
 /* ═══════════ DETAIL SCREEN ═══════════ */
 #detail-sc{position:fixed;inset:0;background:var(--ink);display:flex;flex-direction:column;padding:calc(var(--safe-t)+5px) 8px calc(var(--safe-b)+8px);gap:5px;z-index:3000;overflow:hidden}
 .d-hdr{display:flex;align-items:center;gap:6px;flex-shrink:0}
@@ -487,10 +496,18 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
     <div class="m-timer" id="measTimer">00:00</div>
     <div class="m-meta"><span class="m-spd" id="measSpeed">0 km/h</span><span id="measDist">0 m</span></div>
   </div>
-  <div class="m-iri-row">
+  <div class="m-iri-row" id="measIRIPanel">
     <div class="m-card" id="mCardM"><div class="m-lbl2">IRI Medido</div><div class="m-val" id="aIriM">0.00</div></div>
     <div class="m-card" id="mCardC"><div class="m-lbl2">IRI Corregido</div><div class="m-val" id="aIriC">0.00</div></div>
     <div class="m-card"><div class="m-lbl2">Condición</div><div class="m-val" id="aCond" style="font-size:.9rem;color:var(--mid)">—</div></div>
+  </div>
+  <div class="meas-urban-panel hidden" id="measUrbanPanel">
+    <div class="meas-event-counts">
+      <div class="mec"><span class="mec-val" id="muLeve">0</span><span class="mec-lbl">🟡 Leves</span></div>
+      <div class="mec"><span class="mec-val" id="muMod" style="color:#F97316">0</span><span class="mec-lbl">🟠 Moderados</span></div>
+      <div class="mec"><span class="mec-val" id="muGrave" style="color:#EF4444">0</span><span class="mec-lbl">🔴 Graves</span></div>
+    </div>
+    <div class="meas-last-event" id="muLastEvent">Sin eventos detectados</div>
   </div>
   <div class="m-map"><div id="mapMeas"></div></div>
   <div class="m-chart-3axis">
