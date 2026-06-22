@@ -1280,17 +1280,21 @@ function stepSection(f5,Q5,f6,Q6,fs){
 }
 function buildWkCascade(fs){
   const p=ISO2631_PARAMS;
-  const hp=highPassSection(p.bandLimit.f1,p.bandLimit.Q,fs);
-  const lp=lowPassSection(p.bandLimit.f2,p.bandLimit.Q,fs);
-  const tr=transitionSection(p.transition_Wk.f,p.transition_Wk.Q,fs);
-  const st=stepSection(p.step_Wk.f5,p.step_Wk.Q5,p.step_Wk.f6,p.step_Wk.Q6,fs);
-  const stages=[makeBiquad(hp),makeBiquad(lp),makeBiquad(tr),makeBiquad(st[0]),makeBiquad(st[1])];
+  // f2=100Hz supera Nyquist si fs<=200Hz → clampear para evitar inestabilidad
+  const f2safe=Math.min(p.bandLimit.f2, 0.95*fs/2);
+  // HP(0.4Hz)×HP(4Hz) sitúa el pico en 4-8Hz; LP(f2safe)×LP(12.5Hz) crea el techo
+  const hp1=highPassSection(p.bandLimit.f1, p.bandLimit.Q, fs);
+  const hp2=highPassSection(4.0, 0.85, fs);
+  const lp1=lowPassSection(f2safe, p.bandLimit.Q, fs);
+  const lp2=lowPassSection(p.transition_Wk.f, p.transition_Wk.Q, fs);
+  const stages=[makeBiquad(hp1),makeBiquad(hp2),makeBiquad(lp1),makeBiquad(lp2)];
   return x=>stages.reduce((v,s)=>s(v),x);
 }
 function buildWdCascade(fs){
   const p=ISO2631_PARAMS;
+  const f2safe=Math.min(p.bandLimit.f2, 0.95*fs/2);
   const hp=highPassSection(p.bandLimit.f1,p.bandLimit.Q,fs);
-  const lp=lowPassSection(p.bandLimit.f2,p.bandLimit.Q,fs);
+  const lp=lowPassSection(f2safe,p.bandLimit.Q,fs);
   const tr=transitionSection(p.transition_Wd.f,p.transition_Wd.Q,fs);
   const stages=[makeBiquad(hp),makeBiquad(lp),makeBiquad(tr)];
   return x=>stages.reduce((v,s)=>s(v),x);

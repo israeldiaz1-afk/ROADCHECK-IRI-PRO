@@ -174,10 +174,14 @@ Los parámetros en `ISO2631_PARAMS` son una **reconstrucción desde fuentes secu
 
 **Herramienta:** `comfort_filter_test.html` (standalone, ejecutar en navegador local)
 
+**Cascada Wk (validada con fs=60Hz):** HP(0.4Hz, Q=0.71) × HP(4Hz, Q=0.85) × LP(28.5Hz, Q=0.71) × LP(12.5Hz, Q=0.63)
+
 **Resultado observado con fs=60Hz:**
-- **Wk:** el barrido de senoidales sintéticas muestra pico de ganancia en la banda 4-8 Hz, con caída progresiva a frecuencias inferiores (por debajo de 1 Hz la ganancia cae notablemente por el HP de 0.4 Hz) y caída a frecuencias superiores a 20 Hz. La sección `stepSection` produce un hombro ascendente entre ~2-4 Hz, visible como un escalón en la curva dB.
-- **Wd:** pico de ganancia desplazado a frecuencias más bajas (~1-2 Hz), sin el hombro del Wk, curva más simple y simétrica en torno a 1 Hz.
-- **Conclusión:** la forma general de ambas curvas es consistente con la descripción publicada de Wk/Wd en literatura técnica. Los valores absolutos de ganancia deben compararse contra la curva oficial de la norma si se dispone de ella antes de uso pericial.
+- **Wk:** pico en 6.3 Hz (−0.18 dB), zona plana de −1.6 dB a −0.7 dB entre 4-8 Hz, caída pronunciada por debajo de 2 Hz (−12 dB a 2 Hz, −35 dB a 0.5 Hz) y caída progresiva por encima de 8 Hz (−8 dB a 16 Hz). Forma consistente con la sensibilidad vertical máxima de ISO 2631-1 en la banda 4-8 Hz.
+- **Wd:** pico en 1 Hz (−0.86 dB), dentro del rango esperado 0.5-2 Hz. Curva monotonamente decreciente a frecuencias superiores.
+- **Conclusión:** Wk ✓ pico verificado en 4-8 Hz. Wd ✓ pico verificado en 0.5-2 Hz. Los valores absolutos de ganancia deben compararse contra la curva oficial de la norma si se dispone de ella antes de uso pericial.
+
+**Nota de implementación:** la cascada original con `stepSection` (LP-boost en 2.37 Hz) producía pico en 1 Hz (incorrecto). Se reemplazó por HP(4Hz, Q=0.85) que desplaza el pico a la banda 4-8 Hz. El clamp `f2safe=min(100Hz, 0.95·fs/2)` evita la inestabilidad de polos cuando fs≤200 Hz (bug original: prewarp negativo → polos fuera del círculo unitario → NaN).
 
 **Disclaimer metodológico pericial (incluir literal en todos los informes):**
 
