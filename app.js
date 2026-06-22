@@ -1250,8 +1250,32 @@ function computeLiveComfort(){
   cf.avLive=av;
   updateComfortUI(av);
 }
-function updateComfortUI(av){/* implemented in Fase 4 */}
-function classifyComfort(av){return{level:'no_confortable',label:'No confortable',color:'#10B981'};}
+// ─ comfort UI (Fase 4) ────────────────────────
+const COMFORT_SCALE=[
+  {max:0.315,level:'no_confortable',  label:'No confortable',         color:'#10B981'},
+  {max:0.5,  level:'poco',            label:'Un poco incómodo',       color:'#84CC16'},
+  {max:0.8,  level:'moderado',        label:'Moderadamente incómodo', color:'#F59E0B'},
+  {max:1.25, level:'incomodo',        label:'Incómodo',               color:'#F97316'},
+  {max:2.0,  level:'muy_incomodo',    label:'Muy incómodo',           color:'#EF4444'},
+  {max:Infinity,level:'extremo',      label:'Extremadamente incómodo',color:'#991B1B'}
+];
+function classifyComfort(av){return COMFORT_SCALE.find(s=>av<=s.max)||COMFORT_SCALE[COMFORT_SCALE.length-1];}
+function updateComfortUI(av){
+  const cls=classifyComfort(av);
+  set('comfortAv',av.toFixed(3));
+  set('comfortLevel',cls.label);
+  const lvEl=$('comfortLevel');if(lvEl)lvEl.style.color=cls.color;
+  const pct=Math.min(100,(av/2.5)*100);
+  const bf=$('comfortBarFill');
+  if(bf){bf.style.width=pct+'%';bf.style.background=cls.color;}
+  set('comfortVdv',getVDV('Z').toFixed(2));
+  // Actualizar tarjetas del overlay de medición
+  if(S.active){
+    const aM=$('aIriM');if(aM)aM.textContent=av.toFixed(3);
+    const aC=$('aIriC');if(aC){aC.textContent=cls.label;aC.style.color=cls.color;aC.style.fontSize='.52rem';}
+    const cd=$('aCond');if(cd){cd.textContent=getVDV('Z').toFixed(2);cd.style.color='var(--amber)';}
+  }
+}
 function getVDV(axis){return Math.pow(Math.max(0,S.comfort['sumPow4'+axis]),0.25);}
 function closeComfortSegment(){
   const cf=S.comfort;
