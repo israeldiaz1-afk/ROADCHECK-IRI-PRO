@@ -836,22 +836,32 @@ function mergeEventsIntoStorage(newEvents){
 }
 
 // ─ History ────────────────────────────────────
+const MODE_ICONS={iri:'🛣️',urban:'🏙️',comfort:'📳'};
+function modeBadgesHtml(modesUsed){
+  return modesUsed.map(m=>MODE_ICONS[m]||m).join('+');
+}
 function loadHistory(){
-  const iriRoutes=allRoutes().map(r=>({...r,_type:'iri'}));
-  const comfortRoutes=allComfortRoutes().map(r=>({...r,_type:'comfort'}));
-  const allR=[...iriRoutes,...comfortRoutes].sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
+  // Unified routes (new format) + legacy comfort routes (old format)
+  const unified=allRoutes().map(r=>({...r,modesUsed:r.modesUsed||['iri'],_src:'unified'}));
+  const legacyComfort=allComfortRoutes().map(r=>({...r,modesUsed:['comfort'],_src:'comfort'}));
+  const allR=[...unified,...legacyComfort].sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
   const search=($('histSearch')?.value||'').toLowerCase();
   const cont=$('histList');if(!cont)return;
   const f=allR.filter(r=>(r.name||'').toLowerCase().includes(search)||(fmtD(Date.parse(r.date))).includes(search));
   if(!f.length){cont.innerHTML='<div class="empty-st"><div class="empty-ico">🛣️</div><p class="empty-txt">'+(allR.length?'Sin resultados.':'Sin rutas guardadas.')+'</p></div>';return;}
   cont.innerHTML=f.map(r=>{
     const dt=(r.dist||0)<1000?(r.dist||0).toFixed(0)+' m':((r.dist||0)/1000).toFixed(2)+' km';
-    if(r._type==='comfort'){
+    const modes=r.modesUsed||['iri'];
+    const mIcons=modeBadgesHtml(modes);
+    const isLegacyComfort=r._src==='comfort';
+
+    // Legacy comfort route (old rc_comfort_routes format)
+    if(isLegacyComfort){
       const av=(r.avgAv||0).toFixed(3),cls=classifyComfort(r.avgAv||0);
       return`<div class="route-card">
         <div class="rc-ind" style="background:${cls.color}"></div>
         <div class="rc-body"><div class="rc-name">${escH(r.name||fmtD(Date.parse(r.date)))}</div>
-        <div class="rc-meta"><span>📳 Confort</span><span>📏 ${dt}</span><span>🗓 ${fmtD(Date.parse(r.date))}</span></div>
+        <div class="rc-meta"><span>${mIcons}</span><span>📏 ${dt}</span><span>🗓 ${fmtD(Date.parse(r.date))}</span></div>
         <span class="iri-badge" style="background:rgba(14,165,233,.1);color:#0EA5E9;border:1px solid rgba(14,165,233,.25)">a_v ${av} m/s² — ${cls.label}</span></div>
         <div class="rc-acts">
           <button class="rca" onclick="expComfortXLSX('${r.id}')"><span class="rca-ico">📊</span>Excel</button>
@@ -859,18 +869,29 @@ function loadHistory(){
           <button class="rca del" onclick="delComfortRoute('${r.id}');loadHistory();toast('Eliminada')"><span class="rca-ico">🗑</span>Borrar</button>
         </div></div>`;
     }
-    const iri=(r.avgC||0).toFixed(2),bc=iCls(r.avgC||0),lb=iLbl(r.avgC||0);
-    return`<div class="route-card" onclick="openDetail('${r.id}')">
-      <div class="rc-ind" style="background:${iCol(r.avgC||0)}"></div>
+
+    // Unified route — build summary badges per mode
+    const badges=[];
+    if(modes.includes('iri')&&r.avgC!=null)badges.push(`<span class="iri-badge ${iCls(r.avgC)}">IRI ${r.avgC.toFixed(2)} — ${iLbl(r.avgC)}</span>`);
+    if(modes.includes('comfort')&&r.comfortData){const cls=classifyComfort(r.comfortData.avgAv||0);badges.push(`<span class="iri-badge" style="background:rgba(168,85,247,.1);color:#A855F7;border:1px solid rgba(168,85,247,.25)">a_v ${(r.comfortData.avgAv||0).toFixed(3)} m/s²</span>`);}
+    if(modes.includes('urban')&&r.urbanData)badges.push(`<span class="iri-badge" style="background:rgba(245,158,11,.1);color:#F59E0B;border:1px solid rgba(245,158,11,.25)">${r.urbanData.events.length} eventos</span>`);
+
+    const canOpenDetail=modes.includes('iri')&&(r.segs||[]).length>0;
+    const clickAttr=canOpenDetail?`onclick="openDetail('${r.id}')" style="cursor:pointer"`:'';
+    const stopProp=canOpenDetail?'event.stopPropagation();':'';
+    const actsExtra=canOpenDetail?`
+          <button class="rca" onclick="${stopProp}expKML('${r.id}')"><span class="rca-ico">🌍</span>KML</button>
+          <button class="rca" onclick="${stopProp}expJSON('${r.id}')"><span class="rca-ico">{ }</span>JSON</button>`:'';
+
+    return`<div class="route-card" ${clickAttr}>
+      <div class="rc-ind" style="background:${r.avgC!=null?iCol(r.avgC):'#A855F7'}"></div>
       <div class="rc-body"><div class="rc-name">${escH(r.name||fmtD(Date.parse(r.date)))}</div>
-      <div class="rc-meta"><span>📏 ${dt}</span><span>🗓 ${fmtD(Date.parse(r.date))}</span></div>
-      <span class="iri-badge ${bc}">IRI ${iri} — ${lb}</span></div>
+      <div class="rc-meta"><span>${mIcons}</span><span>📏 ${dt}</span><span>🗓 ${fmtD(Date.parse(r.date))}</span></div>
+      ${badges.join(' ')}</div>
       <div class="rc-acts">
-        <button class="rca" onclick="event.stopPropagation();expXLSX('${r.id}')"><span class="rca-ico">📊</span>Excel</button>
-        <button class="rca" onclick="event.stopPropagation();expHTML('${r.id}')"><span class="rca-ico">📈</span>Informe</button>
-        <button class="rca" onclick="event.stopPropagation();expKML('${r.id}')"><span class="rca-ico">🌍</span>KML</button>
-        <button class="rca" onclick="event.stopPropagation();expJSON('${r.id}')"><span class="rca-ico">{ }</span>JSON</button>
-        <button class="rca del" onclick="event.stopPropagation();deleteRoute('${r.id}')"><span class="rca-ico">🗑</span>Borrar</button>
+        <button class="rca" onclick="${stopProp}expXLSX('${r.id}')"><span class="rca-ico">📊</span>Excel</button>
+        <button class="rca" onclick="${stopProp}expHTML('${r.id}')"><span class="rca-ico">📈</span>Informe</button>${actsExtra}
+        <button class="rca del" onclick="${stopProp}deleteRoute('${r.id}')"><span class="rca-ico">🗑</span>Borrar</button>
       </div></div>`;
   }).join('');
 }
