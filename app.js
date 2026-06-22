@@ -425,6 +425,7 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
   };
   S.urbanEvents.push(event);
   S._lastEventTs=triggerTs;
+  registerChartMark(severity==='grave'?'#EF4444':'#F59E0B','urban');
   onUrbanEventDetected(event);
 }
 function showIOSPerm(){$('sensorPermModal')?.classList.remove('hidden');}
@@ -514,7 +515,7 @@ function onVert(raw){
   const iriM=computeIRI(raw),kmh=S.lastPos?.speed||0,iriC=spdCorr(iriM,kmh);
   const now=Date.now();
   if(now-S.lastIRIUpd>65){S.lastIRIUpd=now;updateIRI(iriM,iriC);if(S.active&&!S.paused)updateStats();}
-  if(S.active&&!S.paused){S.iriMA+=iriM;S.iriCA+=iriC;S.iriN++;S.iriMax=Math.max(S.iriMax,iriC);S.iriMin=Math.min(S.iriMin,iriC);S.iriSum+=iriC;S.iriCnt++;}
+  if(S.active&&!S.paused){S.iriMA+=iriM;S.iriCA+=iriC;S.iriN++;S.iriMax=Math.max(S.iriMax,iriC);S.iriMin=Math.min(S.iriMin,iriC);S.iriSum+=iriC;S.iriCnt++;if(iriC>5)registerChartMark('#EF4444','iri');}
   if(now-S.lastChartUpd>82){S.lastChartUpd=now;S.chartZ.push(+Math.abs(S.hpPrev).toFixed(3));S.chartI.push(+iriC.toFixed(3));if(S.chartZ.length>S.chartMax){S.chartZ.shift();S.chartI.shift();}updateCharts();}
 }
 function updateIRI(m,c){
@@ -1438,6 +1439,7 @@ function computeLiveComfort(){
   const awZ=rmsOf(cf.rmsWindowZ),awX=rmsOf(cf.rmsWindowX),awY=rmsOf(cf.rmsWindowY);
   const av=Math.sqrt((COMFORT_K_FACTORS.kx**2)*awX**2+(COMFORT_K_FACTORS.ky**2)*awY**2+(COMFORT_K_FACTORS.kz**2)*awZ**2);
   cf.avLive=av;
+  if(av>0.8)registerChartMark('#A855F7','comfort');
   updateComfortUI(av);
 }
 // ─ comfort UI (Fase 4) ────────────────────────
@@ -1574,15 +1576,54 @@ window.addEventListener('load',()=>{
   console.log('[Pavement Check v4.0] OK');
 });
 
-// ─ Stubs Fase 8 (implementados en Fase 8) ─────
+// ─ Gráfico 3 ejes (Fase 8) ────────────────────
+const multiMarkPlugin={
+  id:'multiMark',
+  afterDatasetsDraw(chart){
+    if(!S.chartMarks?.length)return;
+    const meta=chart.getDatasetMeta(0);
+    S.chartMarks.forEach(mark=>{
+      if(mark.idx<0||mark.idx>=meta.data.length)return;
+      const x=meta.data[mark.idx]?.x;if(x===undefined)return;
+      const{top,bottom}=chart.chartArea,ctx=chart.ctx;
+      ctx.save();ctx.strokeStyle=mark.color;ctx.lineWidth=2;ctx.globalAlpha=.85;
+      ctx.beginPath();ctx.moveTo(x,top);ctx.lineTo(x,bottom);ctx.stroke();ctx.restore();
+    });
+  }
+};
+function make3AxisChart(id){
+  const ctx=$(id)?.getContext('2d');if(!ctx)return null;
+  if(S.chart3Axis){S.chart3Axis.destroy();S.chart3Axis=null;}
+  return new Chart(ctx,{
+    type:'line',
+    plugins:[multiMarkPlugin],
+    data:{labels:[],datasets:[
+      {label:'X',data:[],borderColor:'#EF4444',yAxisID:'y',tension:.25,pointRadius:0,fill:false},
+      {label:'Y',data:[],borderColor:'#10B981',yAxisID:'y',tension:.25,pointRadius:0,fill:false},
+      {label:'Z',data:[],borderColor:'#0EA5E9',yAxisID:'y',tension:.25,pointRadius:0,fill:false}
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:false,
+      scales:{x:{display:false},y:{display:false}},
+      plugins:{legend:{display:false}}
+    }
+  });
+}
 function feedRawAxisChart(x,y,z){
   if(!S.rawAxisBuf)return;
   S.rawAxisBuf.x.push(x);S.rawAxisBuf.y.push(y);S.rawAxisBuf.z.push(z);
   if(S.rawAxisBuf.x.length>S.rawAxisBuf.max){S.rawAxisBuf.x.shift();S.rawAxisBuf.y.shift();S.rawAxisBuf.z.shift();}
   updateMeas3AxisChart();
 }
-function make3AxisChart(id){return null;} // placeholder hasta Fase 8
-function updateMeas3AxisChart(){} // placeholder hasta Fase 8
+function updateMeas3AxisChart(){
+  const c=S.chart3Axis;if(!c)return;
+  const n=S.rawAxisBuf.x.length,lbl=Array.from({length:n},(_,i)=>i);
+  c.data.labels=lbl;
+  c.data.datasets[0].data=S.rawAxisBuf.x;
+  c.data.datasets[1].data=S.rawAxisBuf.y;
+  c.data.datasets[2].data=S.rawAxisBuf.z;
+  c.update('none');
+}
 function registerChartMark(color,source){
   if(!S.chartMarks||!S.rawAxisBuf)return;
   S.chartMarks.push({idx:S.rawAxisBuf.x.length-1,color,source,ts:Date.now()});

@@ -275,12 +275,14 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .m-card.good::after{background:var(--good)}.m-card.fair::after{background:var(--fair)}.m-card.bad::after{background:var(--bad)}
 .m-lbl2{font-size:.42rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);font-family:var(--mono);font-weight:700}
 .m-val{font-family:var(--mono);font-size:1.4rem;font-weight:700;transition:color .4s;color:var(--mid)}
-/* Measurement map — lazy init, flex fill */
-.m-map{flex:1;min-height:0;position:relative;border-radius:var(--r8);overflow:hidden;border:1px solid var(--ln)}
-/* #mapMeas height set programmatically on init */
+/* Measurement map — 75% */
+.m-map{flex:3;min-height:0;position:relative;border-radius:var(--r8);overflow:hidden;border:1px solid var(--ln)}
 .m-map .leaflet-container{height:100%!important;width:100%!important;background:#091829!important}
-.m-chart{height:110px;flex-shrink:0;background:var(--s1);border:1px solid var(--ln);border-radius:var(--r8);padding:5px}
-.m-chart canvas{width:100%!important;height:100%!important}
+/* 3-axis chart — 25% */
+.m-chart-3axis{flex:1;min-height:90px;flex-shrink:0;background:var(--s1);border:1px solid var(--ln);border-radius:var(--r8);display:flex;flex-direction:column;overflow:hidden}
+.m-chart-3axis .chart-hdr{height:18px;flex-shrink:0;border-bottom:1px solid var(--ln);padding:0 8px}
+.m-chart-3axis .chart-cnv{flex:1;min-height:0;padding:2px}
+.m-chart-3axis canvas{width:100%!important;height:100%!important}
 .m-stats{display:flex;gap:4px;flex-shrink:0}
 .m-st{flex:1;background:var(--s1);border:1px solid var(--ln);border-radius:var(--r8);padding:4px;text-align:center}
 .m-st .sl{font-size:.42rem;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);font-family:var(--mono);font-weight:700}
@@ -483,7 +485,17 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
     <div class="m-card"><div class="m-lbl2">Condición</div><div class="m-val" id="aCond" style="font-size:.9rem;color:var(--mid)">—</div></div>
   </div>
   <div class="m-map"><div id="mapMeas"></div></div>
-  <div class="m-chart"><canvas id="measChart"></canvas></div>
+  <div class="m-chart-3axis">
+    <div class="chart-hdr">
+      <span class="chart-lbl">Acelerómetro (X·Y·Z)</span>
+      <div class="chart-leg">
+        <div class="cl"><div class="cl-ln" style="background:#EF4444"></div>X</div>
+        <div class="cl"><div class="cl-ln" style="background:#10B981"></div>Y</div>
+        <div class="cl"><div class="cl-ln" style="background:#0EA5E9"></div>Z</div>
+      </div>
+    </div>
+    <div class="chart-cnv"><canvas id="measChart3Axis"></canvas></div>
+  </div>
   <div class="m-stats">
     <div class="m-st"><div class="sl">Máx</div><div class="sv" id="aMax">—</div></div>
     <div class="m-st"><div class="sl">Med</div><div class="sv" id="aMed">—</div></div>
