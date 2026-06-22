@@ -763,12 +763,29 @@ function mergeEventsIntoStorage(newEvents){
 
 // ─ History ────────────────────────────────────
 function loadHistory(){
-  const routes=allRoutes(),search=($('histSearch')?.value||'').toLowerCase(),cont=$('histList');if(!cont)return;
-  const f=routes.filter(r=>(r.name||'').toLowerCase().includes(search)||(fmtD(Date.parse(r.date))).includes(search));
-  if(!f.length){cont.innerHTML='<div class="empty-st"><div class="empty-ico">🛣️</div><p class="empty-txt">'+(routes.length?'Sin resultados.':'Sin rutas guardadas.')+'</p></div>';return;}
-  cont.innerHTML=f.slice().reverse().map(r=>{
+  const iriRoutes=allRoutes().map(r=>({...r,_type:'iri'}));
+  const comfortRoutes=allComfortRoutes().map(r=>({...r,_type:'comfort'}));
+  const allR=[...iriRoutes,...comfortRoutes].sort((a,b)=>Date.parse(b.date)-Date.parse(a.date));
+  const search=($('histSearch')?.value||'').toLowerCase();
+  const cont=$('histList');if(!cont)return;
+  const f=allR.filter(r=>(r.name||'').toLowerCase().includes(search)||(fmtD(Date.parse(r.date))).includes(search));
+  if(!f.length){cont.innerHTML='<div class="empty-st"><div class="empty-ico">🛣️</div><p class="empty-txt">'+(allR.length?'Sin resultados.':'Sin rutas guardadas.')+'</p></div>';return;}
+  cont.innerHTML=f.map(r=>{
+    const dt=(r.dist||0)<1000?(r.dist||0).toFixed(0)+' m':((r.dist||0)/1000).toFixed(2)+' km';
+    if(r._type==='comfort'){
+      const av=(r.avgAv||0).toFixed(3),cls=classifyComfort(r.avgAv||0);
+      return`<div class="route-card">
+        <div class="rc-ind" style="background:${cls.color}"></div>
+        <div class="rc-body"><div class="rc-name">${escH(r.name||fmtD(Date.parse(r.date)))}</div>
+        <div class="rc-meta"><span>📳 Confort</span><span>📏 ${dt}</span><span>🗓 ${fmtD(Date.parse(r.date))}</span></div>
+        <span class="iri-badge" style="background:rgba(14,165,233,.1);color:#0EA5E9;border:1px solid rgba(14,165,233,.25)">a_v ${av} m/s² — ${cls.label}</span></div>
+        <div class="rc-acts">
+          <button class="rca" onclick="expComfortXLSX('${r.id}')"><span class="rca-ico">📊</span>Excel</button>
+          <button class="rca" onclick="expComfortHTML('${r.id}')"><span class="rca-ico">📈</span>Informe</button>
+          <button class="rca del" onclick="delComfortRoute('${r.id}');loadHistory();toast('Eliminada')"><span class="rca-ico">🗑</span>Borrar</button>
+        </div></div>`;
+    }
     const iri=(r.avgC||0).toFixed(2),bc=iCls(r.avgC||0),lb=iLbl(r.avgC||0);
-    const dt=r.dist<1000?r.dist.toFixed(0)+' m':(r.dist/1000).toFixed(2)+' km';
     return`<div class="route-card" onclick="openDetail('${r.id}')">
       <div class="rc-ind" style="background:${iCol(r.avgC||0)}"></div>
       <div class="rc-body"><div class="rc-name">${escH(r.name||fmtD(Date.parse(r.date)))}</div>
@@ -894,6 +911,23 @@ function refreshVisor(){
     if(!(l instanceof L.TileLayer)){try{S.mapVisor.removeLayer(l);}catch(e){}}
   });
   const mode=$('viewMode')?.value||'iri_c';
+
+  if(mode==='comfort_heatmap'){
+    const cr=allComfortRoutes();
+    if(!cr.length){toast('Sin rutas de confort guardadas');return;}
+    const allP=[];
+    cr.forEach(route=>{
+      (route.segments||[]).forEach(seg=>{
+        const coords=(seg.pts||[]).map(p=>[p.lat,p.lon]);if(coords.length<2)return;
+        L.polyline(coords,{color:seg.color||'#888',weight:5,opacity:.88})
+          .addTo(S.mapVisor).bindTooltip('a_v: '+(seg.avAvg||0).toFixed(3)+' m/s² · '+seg.level);
+        allP.push(...coords);
+      });
+    });
+    if(allP.length)S.mapVisor.fitBounds(L.latLngBounds(allP),{padding:[20,20]});
+    setTimeout(()=>{try{S.mapVisor.invalidateSize();}catch(e){}},100);
+    return;
+  }
 
   if(mode==='urban_events'){
     // Visualizar eventos urbanos almacenados
