@@ -166,22 +166,25 @@ S.comfort = {
 - `expComfortXLSX(id)` — hoja Datos + hoja Segmentos + hoja Resumen (con disclaimer ISO)
 - `expComfortHTML(id)` — informe con mapa de calor + gráfico + disclaimer pericial
 
-### Filtros ISO 2631-1 — parámetros y advertencia
+### Filtros ISO 2631-1 — implementación
 
-Los parámetros en `ISO2631_PARAMS` son una **reconstrucción desde fuentes secundarias**, no una transcripción verificada del texto oficial. Ver advertencia completa en `RIDE_COMFORT_SPEC.md` Fase 0.
+Cascada W = Hh × Hl × HT × HS según **Oh et al., Noise Control Engineering Journal 65(3), 2017 / ISO 2631-1 Tabla 1**.
+
+| Sección | Función de transferencia | Parámetros Wk | Parámetros Wd |
+|---|---|---|---|
+| Hh — highpass | H(s) = s²/(s²+s·ω1/Q1+ω1²) | f1=0.4 Hz, Q=0.7071 | igual |
+| Hl — bandlimit | H(s) = ω2²/(s²+s·ω2/Q2+ω2²) | f2=min(100,0.95·fs/2) Hz, Q=0.7071 | igual |
+| HT — transición | H(s) = (1+s/ω3)/(1+s/(Q4·ω4)+(s/ω4)²) | f3=f4=12.5 Hz, Q4=0.63 | f3=f4=2.0 Hz, Q4=0.63 |
+| HS — escalón | H(s) = k·LP(ω5)/LP(ω6), k=(ω5/ω6)² | f5=2.37 Hz, Q5=0.94; f6=3.35 Hz, Q6=0.91 | (no aplica, Hs=1) |
 
 ### Validación de Fase 7 — Resultado del barrido de frecuencias
 
 **Herramienta:** `comfort_filter_test.html` (standalone, ejecutar en navegador local)
 
-**Cascada Wk (validada con fs=60Hz):** HP(0.4Hz, Q=0.71) × HP(4Hz, Q=0.85) × LP(28.5Hz, Q=0.71) × LP(12.5Hz, Q=0.63)
-
-**Resultado observado con fs=60Hz:**
-- **Wk:** pico en 6.3 Hz (−0.18 dB), zona plana de −1.6 dB a −0.7 dB entre 4-8 Hz, caída pronunciada por debajo de 2 Hz (−12 dB a 2 Hz, −35 dB a 0.5 Hz) y caída progresiva por encima de 8 Hz (−8 dB a 16 Hz). Forma consistente con la sensibilidad vertical máxima de ISO 2631-1 en la banda 4-8 Hz.
-- **Wd:** pico en 1 Hz (−0.86 dB), dentro del rango esperado 0.5-2 Hz. Curva monotonamente decreciente a frecuencias superiores.
-- **Conclusión:** Wk ✓ pico verificado en 4-8 Hz. Wd ✓ pico verificado en 0.5-2 Hz. Los valores absolutos de ganancia deben compararse contra la curva oficial de la norma si se dispone de ella antes de uso pericial.
-
-**Nota de implementación:** la cascada original con `stepSection` (LP-boost en 2.37 Hz) producía pico en 1 Hz (incorrecto). Se reemplazó por HP(4Hz, Q=0.85) que desplaza el pico a la banda 4-8 Hz. El clamp `f2safe=min(100Hz, 0.95·fs/2)` evita la inestabilidad de polos cuando fs≤200 Hz (bug original: prewarp negativo → polos fuera del círculo unitario → NaN).
+**Resultado verificado con fs=60 Hz (Oh et al. 2017):**
+- **Wk:** pico en 6.3 Hz (0.42 dB); zona ≥ −1 dB entre 5-10 Hz; −5.8 dB a 2 Hz; −7.7 dB a 0.5 Hz. Forma consistente con sensibilidad vertical máxima ISO 2631-1 banda 4-8 Hz. ✓
+- **Wd:** pico en 1 Hz (0.09 dB), dentro del rango 0.5-2 Hz esperado. ✓
+- **Conclusión:** ambas curvas plausibles para uso orientativo. Comparar valores absolutos contra curva oficial ISO si se requiere uso pericial.
 
 **Disclaimer metodológico pericial (incluir literal en todos los informes):**
 

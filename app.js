@@ -1271,32 +1271,37 @@ function makeBiquad(co){
 function prewarp(fHz,fs){return 2*fs*Math.tan(Math.PI*fHz/fs);}
 function highPassSection(fHz,Q,fs){const w=prewarp(fHz,fs);return bilinearTransform(1,0,0,1,w/Q,w*w,fs);}
 function lowPassSection(fHz,Q,fs){const w=prewarp(fHz,fs);return bilinearTransform(0,0,w*w,1,w/Q,w*w,fs);}
-function transitionSection(fHz,Q,fs){const w=prewarp(fHz,fs);return bilinearTransform(0,0,w*w,1,w/Q,w*w,fs);}
-function stepSection(f5,Q5,f6,Q6,fs){
-  const w5=prewarp(f5,fs),w6=prewarp(f6,fs);
-  const sec1=bilinearTransform(0,0,w6*w6,1,w5/Q5,w5*w5,fs);
-  const sec2=bilinearTransform(1,w6/Q6,w6*w6,1,w6/Q6,w6*w6,fs);
-  return[sec1,sec2];
+// HT: sección transición aceleración-velocidad ISO 2631-1 Tabla 1
+// H(s) = (1 + s/ω3) / (1 + s/(Q4·ω4) + (s/ω4)²)
+function HT(f3,f4,Q4,fs){
+  const w3=prewarp(f3,fs),w4=prewarp(f4,fs);
+  return bilinearTransform(0,1/w3,1, 1/(w4*w4),1/(Q4*w4),1, fs);
 }
+// HS: sección escalón (solo Wk) ISO 2631-1 Tabla 1
+// H(s) = k·(1/ω5²·s²+1/(Q5·ω5)·s+1) / (1/ω6²·s²+1/(Q6·ω6)·s+1), k=(ω5/ω6)²
+function HS(f5,Q5,f6,Q6,fs){
+  const w5=prewarp(f5,fs),w6=prewarp(f6,fs),k=(w5/w6)*(w5/w6);
+  return bilinearTransform(k/(w5*w5),k/(Q5*w5),k, 1/(w6*w6),1/(Q6*w6),1, fs);
+}
+// Wk = Hh(0.4Hz)×Hl(f2)×HT(12.5Hz)×HS(2.37/3.35Hz) — Oh et al. NCE 2017 / ISO 2631-1 Tabla 1
 function buildWkCascade(fs){
-  const p=ISO2631_PARAMS;
-  // f2=100Hz supera Nyquist si fs<=200Hz → clampear para evitar inestabilidad
-  const f2safe=Math.min(p.bandLimit.f2, 0.95*fs/2);
-  // HP(0.4Hz)×HP(4Hz) sitúa el pico en 4-8Hz; LP(f2safe)×LP(12.5Hz) crea el techo
-  const hp1=highPassSection(p.bandLimit.f1, p.bandLimit.Q, fs);
-  const hp2=highPassSection(4.0, 0.85, fs);
-  const lp1=lowPassSection(f2safe, p.bandLimit.Q, fs);
-  const lp2=lowPassSection(p.transition_Wk.f, p.transition_Wk.Q, fs);
-  const stages=[makeBiquad(hp1),makeBiquad(hp2),makeBiquad(lp1),makeBiquad(lp2)];
+  const f2=Math.min(100,0.95*fs/2); // clamp: f2=100Hz supera Nyquist si fs<=200Hz
+  const stages=[
+    makeBiquad(highPassSection(0.4,0.7071,fs)),
+    makeBiquad(lowPassSection(f2,0.7071,fs)),
+    makeBiquad(HT(12.5,12.5,0.63,fs)),
+    makeBiquad(HS(2.37,0.94,3.35,0.91,fs))
+  ];
   return x=>stages.reduce((v,s)=>s(v),x);
 }
+// Wd = Hh(0.4Hz)×Hl(f2)×HT(2.0Hz) — Oh et al. NCE 2017 / ISO 2631-1 Tabla 1
 function buildWdCascade(fs){
-  const p=ISO2631_PARAMS;
-  const f2safe=Math.min(p.bandLimit.f2, 0.95*fs/2);
-  const hp=highPassSection(p.bandLimit.f1,p.bandLimit.Q,fs);
-  const lp=lowPassSection(f2safe,p.bandLimit.Q,fs);
-  const tr=transitionSection(p.transition_Wd.f,p.transition_Wd.Q,fs);
-  const stages=[makeBiquad(hp),makeBiquad(lp),makeBiquad(tr)];
+  const f2=Math.min(100,0.95*fs/2);
+  const stages=[
+    makeBiquad(highPassSection(0.4,0.7071,fs)),
+    makeBiquad(lowPassSection(f2,0.7071,fs)),
+    makeBiquad(HT(2.0,2.0,0.63,fs))
+  ];
   return x=>stages.reduce((v,s)=>s(v),x);
 }
 function rebuildComfortFilters(fs){
