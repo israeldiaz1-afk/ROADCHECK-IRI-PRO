@@ -1175,6 +1175,80 @@ function allComfortRoutes(){try{return JSON.parse(localStorage.getItem('rc_comfo
 function saveComfortRoute(r){try{const rs=allComfortRoutes();rs.push(r);localStorage.setItem('rc_comfort_routes',JSON.stringify(rs));}catch(e){toast('Error guardando ruta de confort');}}
 function delComfortRoute(id){localStorage.setItem('rc_comfort_routes',JSON.stringify(allComfortRoutes().filter(r=>r.id!==id)));}
 
+// ─ comfort exports (Fase 6) ───────────────────
+const COMFORT_DISCLAIMER='El valor de confort de marcha mostrado es una estimación obtenida mediante acelerómetro de smartphone, aplicando las curvas de ponderación en frecuencia definidas en la norma ISO 2631-1:1997, calculadas mediante reconstrucción digital de los filtros normativos (ver metodología). No constituye una medición con instrumento certificado conforme a ISO 8041. El valor debe interpretarse como indicador orientativo de ingeniería de campo, no como medición acreditada de laboratorio.';
+
+function expComfortXLSX(id){
+  const r=allComfortRoutes().find(r=>r.id===id);if(!r?.pts)return;
+  loadXLSX(()=>{
+    const wb=XLSX.utils.book_new();
+    const rows=[['#','Fecha','Lat','Lon','Vel.(km/h)','a_v (m/s²)','Nivel ISO 2631-1']];
+    r.pts.forEach((p,i)=>rows.push([i+1,fmtD(p.ts),(p.lat||0).toFixed(7),(p.lon||0).toFixed(7),(p.speed||0).toFixed(1),(p.av||0).toFixed(4),classifyComfort(p.av||0).label]));
+    const ws1=XLSX.utils.aoa_to_sheet(rows);ws1['!cols']=[{wch:5},{wch:18},{wch:13},{wch:13},{wch:11},{wch:13},{wch:28}];
+    XLSX.utils.book_append_sheet(wb,ws1,'Datos');
+    const sr=[['Segmento','a_v medio (m/s²)','VDV (m/s^1.75)','Nivel','Puntos GPS']];
+    (r.segments||[]).forEach((s,i)=>sr.push([i+1,(s.avAvg||0).toFixed(4),(s.vdv||0).toFixed(4),s.level,(s.pts||[]).length]));
+    const ws2=XLSX.utils.aoa_to_sheet(sr);ws2['!cols']=[{wch:11},{wch:18},{wch:18},{wch:28},{wch:12}];
+    XLSX.utils.book_append_sheet(wb,ws2,'Segmentos');
+    const sum=[['ROADCHECK IRI — CONFORT DE MARCHA (ISO 2631-1)'],[''],
+      ['Nombre',r.name||''],['Fecha',fmtD(Date.parse(r.date))],
+      ['Distancia (m)',(r.dist||0).toFixed(1)],
+      ['a_v medio sesión (m/s²)',(r.avgAv||0).toFixed(4)],
+      ['Nivel medio',classifyComfort(r.avgAv||0).label],
+      ['VDV Z (m/s^1.75)',((r.vdvSession?.z)||0).toFixed(4)],
+      ['VDV X (m/s^1.75)',((r.vdvSession?.x)||0).toFixed(4)],
+      ['VDV Y (m/s^1.75)',((r.vdvSession?.y)||0).toFixed(4)],
+      ['fs usado (Hz)',(r.fsUsed||60).toFixed(1)],[''],
+      ['ADVERTENCIA METODOLÓGICA'],['',COMFORT_DISCLAIMER]];
+    const ws3=XLSX.utils.aoa_to_sheet(sum);ws3['!cols']=[{wch:28},{wch:70}];
+    XLSX.utils.book_append_sheet(wb,ws3,'Resumen');
+    XLSX.writeFile(wb,'confort_'+r.id.slice(-6)+'.xlsx');toast('Excel de confort exportado ✓');
+  });
+}
+
+function expComfortHTML(id){
+  const r=allComfortRoutes().find(r=>r.id===id);if(!r?.pts)return;
+  const ptsJ=JSON.stringify(r.pts.map(p=>({lat:p.lat,lon:p.lon,av:+(p.av||0).toFixed(4),speed:+(p.speed||0).toFixed(1)})));
+  const segsJ=JSON.stringify((r.segments||[]).map(s=>({pts:s.pts||[],avAvg:+(s.avAvg||0).toFixed(4),vdv:+(s.vdv||0).toFixed(4),color:s.color||'#888',level:s.level})));
+  const segRows=(r.segments||[]).map((s,i)=>`<tr><td>${i+1}</td><td style="font-weight:700;color:${s.color||'#888'}">${(s.avAvg||0).toFixed(3)}</td><td>${(s.vdv||0).toFixed(3)}</td><td style="color:${s.color||'#888'}">${s.level}</td></tr>`).join('');
+  const scaleJ=JSON.stringify(COMFORT_SCALE.map(s=>({max:s.max===Infinity?9999:s.max,color:s.color,label:s.label})));
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Confort de Marcha — Roadcheck IRI</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;background:#05111F;color:#B8D0E4}.tb{display:flex;align-items:center;gap:10px;padding:9px 14px;background:#091829;border-bottom:1px solid rgba(14,165,233,.2);position:sticky;top:0;z-index:1000}.back{padding:6px 13px;background:rgba(14,165,233,.12);border:1px solid rgba(14,165,233,.25);border-radius:4px;color:#0EA5E9;font-size:.73rem;font-weight:700;cursor:pointer}.rt{font-size:.82rem;font-weight:700;color:#0EA5E9;letter-spacing:1px;font-family:'Courier New',monospace;text-transform:uppercase}.c{padding:12px 12px 28px}h2{font-size:.67rem;text-transform:uppercase;letter-spacing:2px;color:#3A5F7A;margin-bottom:9px;font-family:'Courier New',monospace;padding-top:12px}.cards{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.card{background:#091829;border:1px solid rgba(14,165,233,.15);border-radius:6px;padding:9px 14px;flex:1;min-width:90px;text-align:center}.card .v{font-size:1.35rem;font-weight:700;font-family:'Courier New',monospace;color:#F59E0B}.card .l{font-size:.57rem;color:#3A5F7A;text-transform:uppercase;letter-spacing:1px;margin-top:2px}#map{height:300px;border-radius:6px;overflow:hidden;border:1px solid rgba(14,165,233,.2);margin-bottom:10px}.bx{background:#091829;border:1px solid rgba(14,165,233,.1);border-radius:6px;padding:10px;margin-bottom:7px}.disclaimer{background:#0D2040;border:1px solid rgba(245,158,11,.35);border-radius:6px;padding:12px 14px;margin-bottom:10px;font-size:.64rem;color:#B8D0E4;line-height:1.7}.disc-title{font-size:.59rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#F59E0B;margin-bottom:5px;font-family:'Courier New',monospace}table{width:100%;border-collapse:collapse;font-size:.7rem}th{background:#091829;padding:7px 8px;text-align:left;font-size:.58rem;text-transform:uppercase;color:#3A5F7A;letter-spacing:1px;font-family:'Courier New',monospace}td{padding:7px 8px;border-bottom:1px solid rgba(14,165,233,.07)}</style>
+</head><body>
+<div class="tb"><button class="back" onclick="history.length>1?history.back():window.close()">← Volver</button><div class="rt">Confort de Marcha — ISO 2631-1</div></div>
+<div class="c">
+<div class="disclaimer"><div class="disc-title">⚠ Advertencia Metodológica — Leer antes de usar este informe en peritajes</div>${escH(COMFORT_DISCLAIMER)}</div>
+<h2>Resumen</h2>
+<div class="cards">
+<div class="card"><div class="v">${(r.avgAv||0).toFixed(3)}</div><div class="l">a_v medio (m/s²)</div></div>
+<div class="card"><div class="v">${((r.dist||0)/1000).toFixed(2)}</div><div class="l">Distancia (km)</div></div>
+<div class="card"><div class="v">${(r.segments||[]).length}</div><div class="l">Segmentos</div></div>
+<div class="card"><div class="v" style="font-size:.75rem;color:${classifyComfort(r.avgAv||0).color}">${classifyComfort(r.avgAv||0).label}</div><div class="l">Nivel ISO 2631-1</div></div>
+</div>
+<p style="font-size:.58rem;color:#3A5F7A;margin-bottom:8px;font-family:'Courier New',monospace">${escH(r.name||'')} · ${fmtD(Date.parse(r.date))} · fs: ${(r.fsUsed||60).toFixed(0)} Hz · VDV_Z: ${((r.vdvSession?.z)||0).toFixed(3)} m/s^1.75</p>
+<h2>Mapa de Calor de Confort</h2><div id="map"></div>
+<h2>a_v por Segmento</h2>
+<div class="bx"><div style="height:200px"><canvas id="c1"></canvas></div></div>
+<h2>Datos por Segmento</h2>
+<table><thead><tr><th>#</th><th>a_v (m/s²)</th><th>VDV (m/s^1.75)</th><th>Nivel</th></tr></thead><tbody>${segRows}</tbody></table>
+</div>
+<script>
+const SEGS=${segsJ},PTS=${ptsJ},SCALE=${scaleJ};
+function cCol(av){return(SCALE.find(s=>av<=s.max)||SCALE[SCALE.length-1]).color;}
+const map=L.map('map',{zoomControl:true,attributionControl:true});
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,subdomains:['a','b','c'],attribution:'© OpenStreetMap'}).addTo(map);
+const allP=[];
+SEGS.forEach(s=>{if(!s.pts||s.pts.length<2)return;const c=s.pts.map(p=>[p.lat,p.lon]);L.polyline(c,{color:s.color||cCol(s.avAvg),weight:5,opacity:.9}).addTo(map).bindTooltip('a_v: '+s.avAvg+' m/s² · '+s.level);allP.push(...c);});
+if(allP.length)map.fitBounds(L.latLngBounds(allP),{padding:[14,14]});
+new Chart(document.getElementById('c1'),{type:'bar',data:{labels:SEGS.map((_,i)=>i+1),datasets:[{label:'a_v medio (m/s²)',data:SEGS.map(s=>s.avAvg),backgroundColor:SEGS.map(s=>(s.color||cCol(s.avAvg))+'cc'),borderColor:SEGS.map(s=>s.color||cCol(s.avAvg)),borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{min:0,title:{display:true,text:'a_v (m/s²)',color:'#5A7E9C',font:{size:11}},ticks:{color:'#5A7E9C'},grid:{color:'rgba(14,165,233,.07)'}},x:{title:{display:true,text:'Segmento',color:'#3A5F7A',font:{size:11}},ticks:{color:'#3A5F7A'}}}}});
+<\/script></body></html>`;
+  dlBlob(html,'text/html','confort_'+r.id.slice(-6)+'.html');toast('Informe de confort exportado ✓');
+}
+
 // ─ comfort filters ISO 2631-1 (Fase 2) ────────
 // ⚠️ Parámetros reconstruidos desde fuentes secundarias — validar curva en Fase 7.
 const ISO2631_PARAMS={
