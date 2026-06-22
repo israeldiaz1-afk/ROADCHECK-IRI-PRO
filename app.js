@@ -39,6 +39,13 @@ const S={
   },
   mapMain:null,mapMeas:null,mapVisor:null,mapDetail:null,
   lineMain:null,lineMeas:null,mkMain:null,mkMeas:null,mkDetail:null,
+  _sessionStart:0,
+  _recentUrbanEvent:false,
+  adaptiveCal:{
+    active:false,gravBuf:[],gravBufMax:180,
+    lastUpdate:0,updateCount:0,driftDeg:0,
+    driftThresholdDeg:2.0,status:'idle'
+  }
 };
 
 const VEHICLES=[
@@ -281,7 +288,12 @@ function onRaw(x,y,z){
   if(S.activeModes.has('urban'))feedUrbanBuffer(x,y,z,Date.now());
   if(S.activeModes.has('comfort'))onComfortSample(x,y,z,Date.now());
   onVert(raw);
-  if(S.active&&!S.paused)feedRawAxisChart(x,y,z);
+  if(S.active&&!S.paused){
+    feedRawAxisChart(x,y,z);
+    const _ts=Date.now();
+    feedAdaptiveCalibration(x,y,z,_ts);
+    queueUI('adaptiveCal',updateAdaptiveCalUI);
+  }
 }
 
 // ─ urban buffer ───────────────────────────────
@@ -444,6 +456,7 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
   };
   S.urbanEvents.push(event);
   S._lastEventTs=triggerTs;
+  S._recentUrbanEvent=true;setTimeout(()=>{S._recentUrbanEvent=false;},500);
   registerChartMark(severity==='grave'?'#EF4444':'#F59E0B','urban');
   onUrbanEventDetected(event);
 }
@@ -730,7 +743,8 @@ function startMeasurement(){
     return;
   }
   if(S.activeModes.has('iri')&&!S.vehicleId){toast('⚠️ Selecciona un vehículo para el modo Carretera');openGarage();return;}
-  S.active=true;S.paused=false;S.dist=0;
+  S.active=true;S.paused=false;S.dist=0;S._sessionStart=Date.now();S._recentUrbanEvent=false;
+  S.adaptiveCal={active:false,gravBuf:[],gravBufMax:180,lastUpdate:0,updateCount:0,driftDeg:0,driftThresholdDeg:2.0,status:'idle'};
   S.buf=[];S.chartZ=[];S.chartI=[];S.hpPrev=0;S.hpPrevIn=0;
   stopEKG();
   S.lineMain?.setLatLngs([]);S.lineMeas?.setLatLngs([]);
@@ -1747,4 +1761,55 @@ function registerChartMark(color,source){
   if(!EKG.buf)return;
   EKG.buf.marks.push({idx:EKG.buf.z.length-1,color});
   if(EKG.buf.marks.length>20)EKG.buf.marks.shift();
+}
+
+// ─ Calibración adaptativa (Fase 5) ────────────
+function feedAdaptiveCalibration(x,y,z,timestamp){
+  if(!S.active||!S.calibrated||!S.grav)return;
+  const speed=S.lastPos?.speed||0,g=S.grav;
+  const vertCal=x*g.x+y*g.y+z*g.z;
+  const latCal=Math.abs(x*g.y-y*g.x);
+  const prevVert=S.adaptiveCal.gravBuf[S.adaptiveCal.gravBuf.length-1]?.vert||vertCal;
+  const jerk=Math.abs(vertCal-prevVert)*60;
+  const calm=speed>15&&speed<90&&latCal<0.3&&jerk<0.8
+    &&!S._recentUrbanEvent&&(timestamp-S._sessionStart)>10000;
+  if(!calm){S.adaptiveCal.status='idle';return;}
+  S.adaptiveCal.status='sampling';
+  S.adaptiveCal.gravBuf.push({x,y,z,vert:vertCal});
+  if(S.adaptiveCal.gravBuf.length>S.adaptiveCal.gravBufMax)S.adaptiveCal.gravBuf.shift();
+  if(S.adaptiveCal.gravBuf.length<S.adaptiveCal.gravBufMax)return;
+  let mx=0,my=0,mz=0;
+  S.adaptiveCal.gravBuf.forEach(s=>{mx+=s.x;my+=s.y;mz+=s.z;});
+  const n=S.adaptiveCal.gravBuf.length;
+  mx/=n;my/=n;mz/=n;
+  const mag=Math.sqrt(mx*mx+my*my+mz*mz);
+  if(mag<0.5)return;
+  const newGrav={x:mx/mag,y:my/mag,z:mz/mag};
+  const dot=newGrav.x*g.x+newGrav.y*g.y+newGrav.z*g.z;
+  const driftDeg=Math.acos(Math.min(1,Math.abs(dot)))*180/Math.PI;
+  S.adaptiveCal.driftDeg=driftDeg;
+  S.adaptiveCal.lastUpdate=timestamp;
+  S.adaptiveCal.updateCount++;
+  S.adaptiveCal.gravBuf=[];
+  if(driftDeg>S.adaptiveCal.driftThresholdDeg){
+    S.grav=newGrav;S.gravMag=mag;
+    S.adaptiveCal.status='updated';
+  } else {
+    S.adaptiveCal.status='idle';
+  }
+}
+function updateAdaptiveCalUI(){
+  const st=S.adaptiveCal.status;
+  const dot=$('aciDot'),txt=$('aciTxt');
+  if(!dot||!txt)return;
+  dot.className='aci-dot '+st;
+  const colors={idle:'#3A5F7A',sampling:'#0EA5E9',updated:'#10B981',drift_warning:'#F59E0B'};
+  dot.style.background=colors[st]||'#3A5F7A';
+  const texts={
+    idle:'Cal. estática',
+    sampling:'Recalibrando…',
+    updated:`Cal. ×${S.adaptiveCal.updateCount}`,
+    drift_warning:`Deriva ${S.adaptiveCal.driftDeg.toFixed(1)}°`
+  };
+  txt.textContent=texts[st]||'Cal. estática';
 }
