@@ -1,0 +1,7 @@
+name = "pavement-check-api"
+main = "workers/pavement-check-api/index.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "EVENTS_KV"
+id = "066906df636e4b1798ef8febf5a9356c"

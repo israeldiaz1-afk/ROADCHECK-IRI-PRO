@@ -1813,3 +1813,27 @@ function updateAdaptiveCalUI(){
   };
   txt.textContent=texts[st]||'Cal. estática';
 }
+
+// ─ Red colaborativa (Fase 7) ──────────────────
+const WORKER_URL='https://pavement-check-api.israeldiaz1.workers.dev';
+
+async function syncEventsToNetwork(){
+  if(localStorage.getItem('rc_sharing_consent')!=='yes')return;
+  const events=JSON.parse(localStorage.getItem('rc_urban_events')||'[]')
+    .filter(e=>e.confirmed&&e.confirmCount>=1);
+  if(!events.length)return;
+  try{
+    await fetch(`${WORKER_URL}/api/events`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({events})
+    });
+  }catch(e){/* silencioso */}
+}
+async function fetchNetworkEvents(lat,lon,radiusM=500){
+  if(localStorage.getItem('rc_sharing_consent')!=='yes')return[];
+  try{
+    const r=await fetch(`${WORKER_URL}/api/events?lat=${lat}&lon=${lon}&r=${radiusM}`);
+    return await r.json();
+  }catch{return[];}
+}
