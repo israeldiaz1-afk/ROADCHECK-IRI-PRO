@@ -54,11 +54,13 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 /* ── RULE ── */
 .rule{flex-shrink:0;height:1px;background:linear-gradient(90deg,transparent,var(--ln2) 25%,var(--ln2) 75%,transparent)}
 
-/* ── MODE SWITCH ── */
-.mode-switch{display:flex;gap:3px;flex-shrink:0;background:var(--s2);border:1px solid var(--ln);border-radius:var(--r8);padding:3px}
-.mode-btn{flex:1;padding:6px 8px;border-radius:6px;border:1px solid transparent;background:none;color:var(--dim);font-family:var(--mono);font-size:.50rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;cursor:pointer;transition:all .14s}
-.mode-btn.active{background:var(--sky-a);border-color:var(--sky-b);color:var(--sky)}
-.mode-btn:active{opacity:.8}
+/* ── MODE SELECTOR (chips multi-selección) ── */
+.mode-selector{display:flex;gap:5px;flex-shrink:0}
+.mode-chip{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 6px;border-radius:var(--r8);border:1px solid var(--ln);background:var(--s1);color:var(--dim);font-family:var(--mono);font-size:.49rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;cursor:pointer;transition:all .14s;flex-direction:column}
+.mode-chip.active{background:var(--sky-a);border-color:var(--sky-b);color:var(--sky)}
+.mode-chip:active{opacity:.8}
+.mc-ico{font-size:.9rem;line-height:1}
+.mc-lbl{font-size:.44rem;letter-spacing:.5px}
 
 /* ── IRI PANEL ── */
 .iri-panel{flex-shrink:0;background:var(--s1);border:1px solid var(--ln2);border-radius:var(--r8);overflow:hidden}
@@ -322,10 +324,16 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
       </div>
       <div class="rule"></div>
 
-      <div class="mode-switch" id="modeSwitch">
-        <button class="mode-btn active" data-mode="iri" onclick="setMode('iri')">🛣️ Carretera</button>
-        <button class="mode-btn" data-mode="urban" onclick="setMode('urban')">🕳️ Urbano</button>
-        <button class="mode-btn" data-mode="comfort" onclick="setMode('comfort')">📳 Confort</button>
+      <div class="mode-selector" id="modeSelector">
+        <button class="mode-chip active" data-mode="iri" onclick="toggleMode('iri')">
+          <span class="mc-ico">🛣️</span><span class="mc-lbl">Carretera</span>
+        </button>
+        <button class="mode-chip" data-mode="urban" onclick="toggleMode('urban')">
+          <span class="mc-ico">🕳️</span><span class="mc-lbl">Urbano</span>
+        </button>
+        <button class="mode-chip" data-mode="comfort" onclick="toggleMode('comfort')">
+          <span class="mc-ico">📳</span><span class="mc-lbl">Confort</span>
+        </button>
       </div>
 
       <div class="iri-panel" id="iriPanel">
