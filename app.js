@@ -14,7 +14,7 @@ const S={
   calPhase:0,calStart:0,gravSamples:[],vibSamples:[],
   grav:null,gravMag:9.81,noiseLevel:.05,
   hpPrev:0,hpPrevIn:0,buf:[],bufMax:50,
-  chartMain:null,chartMeas:null,chartDetail:null,
+  chart3Axis:null,chartMeas:null,chartDetail:null,
   chartZ:[],chartI:[],chartMax:80,lastChartUpd:0,lastIRIUpd:0,
   vehicleId:null,selRoutes:new Set(),showAvg:false,
   curDetail:null,curDetailRoute:null,overlapCb:null,pendingRoute:null,
@@ -552,14 +552,13 @@ function makeChart(id,zCol='#3A5F7A'){
   }});
 }
 function updateCharts(){
+  if(!S.chartMeas)return;
   const lbl=S.chartZ.map((_,i)=>i),mxZ=Math.max(...S.chartZ,.05),mxI=Math.max(...S.chartI,.5);
-  [S.chartMain,S.chartMeas].forEach(c=>{
-    if(!c)return;
-    c.data.labels=lbl;c.data.datasets[0].data=S.chartZ;c.data.datasets[1].data=S.chartI;
-    c.options.scales.y.max=Math.max(.1,mxZ*1.4);
-    c.options.scales.y1.max=Math.max(1,mxI*1.4);
-    c.update('none');
-  });
+  const c=S.chartMeas;
+  c.data.labels=lbl;c.data.datasets[0].data=S.chartZ;c.data.datasets[1].data=S.chartI;
+  c.options.scales.y.max=Math.max(.1,mxZ*1.4);
+  c.options.scales.y1.max=Math.max(1,mxI*1.4);
+  c.update('none');
 }
 
 // Plugin línea vertical para gráfico de detalle
@@ -1559,7 +1558,6 @@ window.addEventListener('load',()=>{
   loadCfg();
   startGPS();
   startSensor();
-  S.chartMain=makeChart('mainChart');
   $('segSlider')?.addEventListener('input',function(){set('segValLbl',this.value+' m');});
   $('vRefSlider')?.addEventListener('input',function(){set('vRefLbl',this.value);});
   $('vExpSlider')?.addEventListener('input',function(){set('vExpLbl',parseFloat(this.value).toFixed(2));});
