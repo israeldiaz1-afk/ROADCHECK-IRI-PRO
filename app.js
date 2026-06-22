@@ -159,6 +159,19 @@ function recalcMainLayout(){
   try{S.mapMain?.invalidateSize();}catch(e){}
 }
 const capitalize=s=>s.charAt(0).toUpperCase()+s.slice(1);
+
+// ─ Cola de actualizaciones UI (rAF) ───────────
+const UI_QUEUE={};
+let uiFramePending=false;
+function queueUI(key,fn){
+  UI_QUEUE[key]=fn;
+  if(!uiFramePending){uiFramePending=true;requestAnimationFrame(flushUI);}
+}
+function flushUI(){
+  uiFramePending=false;
+  const keys=Object.keys(UI_QUEUE);
+  keys.forEach(k=>{try{UI_QUEUE[k]();}catch(e){}delete UI_QUEUE[k];});
+}
 function allVeh(){return[...VEHICLES,...JSON.parse(localStorage.getItem('rc_cveh')||'[]')];}
 function allRoutes(){try{return JSON.parse(localStorage.getItem('rc_routes')||'[]');}catch(e){return[];}}
 function saveRoute(r){try{const rs=allRoutes();rs.push(r);localStorage.setItem('rc_routes',JSON.stringify(rs));}catch(e){toast('Error guardando');}}
@@ -478,25 +491,22 @@ function doCalibrate(){startCal();}
 
 // ─ urban UI ───────────────────────────────────
 function onUrbanEventDetected(event){
-  // Actualizar contadores
-  const counts=S.urbanEvents.reduce((acc,e)=>{acc[e.severity]=(acc[e.severity]||0)+1;return acc;},{});
-  set('uEventCount',S.urbanEvents.length.toString());
-  set('uGraveCount',(counts.grave||0).toString());
-  set('uModCount',(counts.moderado||0).toString());
-
-  // Último evento
-  const icons={pothole:'🕳️',manhole:'⭕',speedbump:'⛰️',crack:'➰',unknown:'❓'};
-  const el=$('uLastEvent');
-  if(el)el.innerHTML=`${icons[event.type]||'❓'} ${capitalize(event.severity)} · score ${event.score.toFixed(0)} · ${event.speed.toFixed(0)} km/h`;
-
+  // Marcador en mapa (no es DOM de panel — sin rAF)
+  addEventMarkerToMap(event);
   // Toast solo para graves
   if(event.severity==='grave')toast('🕳️ Bache grave detectado');
-
-  // Marcador en mapa activo
-  addEventMarkerToMap(event);
-
-  // Vibración háptica (feedback físico, no visual)
+  // Vibración háptica
   if(navigator.vibrate&&event.severity!=='leve')navigator.vibrate(event.severity==='grave'?[80,40,80]:60);
+  // Actualizaciones DOM via cola rAF
+  queueUI('urban',()=>{
+    const counts=S.urbanEvents.reduce((acc,e)=>{acc[e.severity]=(acc[e.severity]||0)+1;return acc;},{});
+    set('uEventCount',S.urbanEvents.length.toString());
+    set('uGraveCount',(counts.grave||0).toString());
+    set('uModCount',(counts.moderado||0).toString());
+    const icons={pothole:'🕳️',manhole:'⭕',speedbump:'⛰️',crack:'➰',unknown:'❓'};
+    const el=$('uLastEvent');
+    if(el)el.innerHTML=`${icons[event.type]||'❓'} ${capitalize(event.severity)} · score ${event.score.toFixed(0)} · ${event.speed.toFixed(0)} km/h`;
+  });
 }
 
 function addEventMarkerToMap(event){
@@ -514,7 +524,7 @@ function addEventMarkerToMap(event){
 function onVert(raw){
   const iriM=computeIRI(raw),kmh=S.lastPos?.speed||0,iriC=spdCorr(iriM,kmh);
   const now=Date.now();
-  if(now-S.lastIRIUpd>65){S.lastIRIUpd=now;updateIRI(iriM,iriC);if(S.active&&!S.paused)updateStats();}
+  if(now-S.lastIRIUpd>65){S.lastIRIUpd=now;const _m=iriM,_c=iriC;queueUI('iri',()=>updateIRI(_m,_c));if(S.active&&!S.paused)queueUI('stats',updateStats);}
   if(S.active&&!S.paused){S.iriMA+=iriM;S.iriCA+=iriC;S.iriN++;S.iriMax=Math.max(S.iriMax,iriC);S.iriMin=Math.min(S.iriMin,iriC);S.iriSum+=iriC;S.iriCnt++;if(iriC>5)registerChartMark('#EF4444','iri');}
   if(now-S.lastChartUpd>82){S.lastChartUpd=now;S.chartZ.push(+Math.abs(S.hpPrev).toFixed(3));S.chartI.push(+iriC.toFixed(3));if(S.chartZ.length>S.chartMax){S.chartZ.shift();S.chartI.shift();}updateCharts();}
 }
@@ -1514,7 +1524,7 @@ function computeLiveComfort(){
   const av=Math.sqrt((COMFORT_K_FACTORS.kx**2)*awX**2+(COMFORT_K_FACTORS.ky**2)*awY**2+(COMFORT_K_FACTORS.kz**2)*awZ**2);
   cf.avLive=av;
   if(av>0.8)registerChartMark('#A855F7','comfort');
-  updateComfortUI(av);
+  const _av=av;queueUI('comfort',()=>updateComfortUI(_av));
 }
 // ─ comfort UI (Fase 4) ────────────────────────
 const COMFORT_SCALE=[
