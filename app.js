@@ -17,9 +17,9 @@ const S={
   chartMain:null,chartMeas:null,chartDetail:null,
   chartZ:[],chartI:[],chartMax:80,lastChartUpd:0,lastIRIUpd:0,
   vehicleId:null,selRoutes:new Set(),showAvg:false,
-  curDetail:null,curDetailRoute:null,overlapCb:null,pendingRoute:null,pendingComfortRoute:null,
+  curDetail:null,curDetailRoute:null,overlapCb:null,pendingRoute:null,
   timerRef:null,timerStart:0,
-  mode:'iri',
+  activeModes:new Set(['iri']),
   urbanBuf:[],urbanBufMax:90,
   urbanEvents:[],
   noiseBaseline:{mean:0,std:0.05,samples:[]},
@@ -93,20 +93,70 @@ function loadCfg(){
   S.noiseLevel=C.noiseFloor;
   const vid=localStorage.getItem('rc_veh');
   if(vid){const v=allVeh().find(v=>v.id===vid);if(v){C.coefA=v.coefA;C.coefB=v.coefB;S.vehicleId=vid;updateVehUI(v);}}
+  // Restaurar modos activos (con retrocompat a rc_mode anterior)
+  const savedModes=localStorage.getItem('rc_activeModes');
+  if(savedModes){try{const m=JSON.parse(savedModes);if(Array.isArray(m)&&m.length)S.activeModes=new Set(m);}catch(e){}}
+  else{const old=localStorage.getItem('rc_mode');if(old)S.activeModes=new Set([old]);}
 }
 function saveCfg(){try{localStorage.setItem('rc_cfg',JSON.stringify(C));}catch(e){}}
+function saveActiveModes(){try{localStorage.setItem('rc_activeModes',JSON.stringify([...S.activeModes]));}catch(e){}}
 
-// ─ mode switch ────────────────────────────────
-function setMode(mode){
-  S.mode=mode;
-  localStorage.setItem('rc_mode',mode);
-  S.urbanBuf=[];S.urbanEvents=[];
-  document.querySelectorAll('.mode-btn').forEach(b=>{
-    b.classList.toggle('active',b.dataset.mode===mode);
+// ─ multi-mode architecture ────────────────────
+const MODE_INCOMPATIBLE_PAIRS=[['iri','urban']];
+
+function toggleMode(mode){
+  if(S.activeModes.has(mode)){
+    S.activeModes.delete(mode);
+    if(S.activeModes.size===0)S.activeModes.add('iri');
+  } else {
+    MODE_INCOMPATIBLE_PAIRS.forEach(([a,b])=>{
+      if(mode===a&&S.activeModes.has(b)){toast('Carretera y Urbano no pueden combinarse — se ha desactivado el otro modo');S.activeModes.delete(b);}
+      if(mode===b&&S.activeModes.has(a)){toast('Carretera y Urbano no pueden combinarse — se ha desactivado el otro modo');S.activeModes.delete(a);}
+    });
+    S.activeModes.add(mode);
+  }
+  saveActiveModes();
+  renderModeUI();
+  renderMainPanels();
+  recalcMainLayout();
+}
+function renderModeUI(){
+  document.querySelectorAll('.mode-chip').forEach(btn=>{
+    btn.classList.toggle('active',S.activeModes.has(btn.dataset.mode));
   });
-  $('iriPanel')?.classList.toggle('hidden',mode!=='iri');
-  $('urbanPanel')?.classList.toggle('hidden',mode!=='urban');
-  $('comfortPanel')?.classList.toggle('hidden',mode!=='comfort');
+  // Chip de vehículo: atenuado si Carretera no está activo
+  const vehChip=$('cVEH');
+  if(vehChip)vehChip.style.opacity=S.activeModes.has('iri')?'1':'0.45';
+}
+function renderMainPanels(){
+  const n=S.activeModes.size;
+  ['iri','urban','comfort'].forEach(mode=>{
+    const panel=$(mode+'Panel');
+    if(!panel)return;
+    const isActive=S.activeModes.has(mode);
+    panel.classList.toggle('hidden',!isActive);
+    panel.classList.toggle('compact',isActive&&n>1);
+  });
+}
+function recalcMainLayout(){
+  const screenEl=$('tab-main');if(!screenEl)return;
+  const mapWrap=$('mapMain')?.closest('.map-wrap');if(!mapWrap)return;
+  const totalH=screenEl.clientHeight;
+  const usedH=[
+    screenEl.querySelector('.hdr'),
+    $('modeSelector'),
+    $('mainPanelsContainer'),
+    $('calPanel'),
+    screenEl.querySelector('.act-grid'),
+    $('btnStart'),
+    $('calReqNote'),
+    $('btnIOS')
+  ].filter(el=>el&&!el.classList.contains('hidden'))
+   .reduce((sum,el)=>sum+el.getBoundingClientRect().height,0);
+  const gaps=8*8;
+  const available=Math.max(100,totalH-usedH-gaps);
+  mapWrap.style.height=available+'px';
+  try{S.mapMain?.invalidateSize();}catch(e){}
 }
 const capitalize=s=>s.charAt(0).toUpperCase()+s.slice(1);
 function allVeh(){return[...VEHICLES,...JSON.parse(localStorage.getItem('rc_cveh')||'[]')];}
@@ -158,12 +208,12 @@ function onGPS(pos){
   }
   const st=kmh>1?kmh.toFixed(1)+' km/h':'0 km/h';
   set('speedPill',st);set('measSpeed',st);
-  if(S.active&&!S.paused&&S.calibrated&&S.mode!=='comfort'&&S.iriN>0){
+  if(S.active&&!S.paused&&S.calibrated&&S.activeModes.has('iri')&&S.iriN>0){
     S.pts.push({ts:Date.now(),lat,lon,speed:kmh,iri_m:S.iriMA/S.iriN,iri_c:S.iriCA/S.iriN});
     S.iriMA=0;S.iriCA=0;S.iriN=0;
     const sn=Math.floor(S.dist/C.segLen);if(sn>S.segCount){S.segCount=sn;set('aSegs',S.segCount.toString());}
   }
-  if(S.active&&!S.paused&&S.calibrated&&S.mode==='comfort'){
+  if(S.active&&!S.paused&&S.calibrated&&S.activeModes.has('comfort')){
     const cf=S.comfort;
     const pt={ts:Date.now(),lat,lon,speed:kmh,av:cf.avLive};
     cf.pts.push(pt);
@@ -209,9 +259,10 @@ function onRaw(x,y,z){
   if(!S.calibrated)return;
   const g=S.grav;
   const raw=Math.abs(x*g.x+y*g.y+z*g.z-S.gravMag);
-  if(S.mode==='urban'){feedUrbanBuffer(x,y,z,Date.now());}
-  else if(S.mode==='comfort'){onComfortSample(x,y,z,Date.now());}
+  if(S.activeModes.has('urban'))feedUrbanBuffer(x,y,z,Date.now());
+  if(S.activeModes.has('comfort'))onComfortSample(x,y,z,Date.now());
   onVert(raw);
+  if(S.active&&!S.paused)feedRawAxisChart(x,y,z);
 }
 
 // ─ urban buffer ───────────────────────────────
@@ -654,21 +705,21 @@ function startMeasurement(){
     const b=$('btnCal');if(b){b.style.borderColor='var(--bad)';setTimeout(()=>b.style.borderColor='',2000);}
     return;
   }
-  if(!S.vehicleId){toast('⚠️ Selecciona un vehículo');openGarage();return;}
+  if(S.activeModes.has('iri')&&!S.vehicleId){toast('⚠️ Selecciona un vehículo para el modo Carretera');openGarage();return;}
   S.active=true;S.paused=false;S.dist=0;
   S.buf=[];S.chartZ=[];S.chartI=[];S.hpPrev=0;S.hpPrevIn=0;
+  S.rawAxisBuf={x:[],y:[],z:[],max:80};S.chartMarks=[];
   S.lineMain?.setLatLngs([]);S.lineMeas?.setLatLngs([]);
 
-  if(S.mode==='urban'){
-    // Modo urbano: resetear eventos y buffers
+  if(S.activeModes.has('urban')){
     S.urbanEvents=[];S.urbanBuf=[];S._lastEventTs=null;
     S.groundTruth=[];
     S.noiseBaseline={mean:0,std:0.05,samples:[]};
     set('uEventCount','0');set('uGraveCount','0');set('uModCount','0');
     const lEl=$('uLastEvent');if(lEl)lEl.textContent='Sin eventos detectados aún';
     const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='block';
-  }else if(S.mode==='comfort'){
-    // Modo confort: resetear acumuladores
+  }
+  if(S.activeModes.has('comfort')){
     const cf=S.comfort;
     cf.pts=[];cf.segments=[];cf._currentSegPts=[];
     cf.sumPow4Z=0;cf.sumPow4X=0;cf.sumPow4Y=0;
@@ -677,8 +728,8 @@ function startMeasurement(){
     cf._dtBuffer=[];cf._lastTs=null;cf._lastVdvTs=null;
     cf._segStartPow4Z=0;cf._segDist=0;
     rebuildComfortFilters(cf.fsActual);
-  }else{
-    // Modo IRI: resetear acumuladores IRI
+  }
+  if(S.activeModes.has('iri')){
     S.pts=[];S.segCount=0;
     S.iriMA=0;S.iriCA=0;S.iriN=0;S.iriMax=0;S.iriMin=Infinity;S.iriSum=0;S.iriCnt=0;
   }
@@ -687,8 +738,8 @@ function startMeasurement(){
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     initMeasMap();
     if(S.lastPos&&S.mapMeas)mapCenter(S.mapMeas,S.lastPos.lat,S.lastPos.lon,17);
+    if(!S.chart3Axis)S.chart3Axis=make3AxisChart('measChart3Axis');
   }));
-  if(!S.chartMeas)S.chartMeas=makeChart('measChart','#5A7E9C');
   ['aMax','aMed','aMin'].forEach(id=>set(id,'—'));set('aSegs','0');
   $('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');
   startTimer();
@@ -698,36 +749,59 @@ function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidd
 function stopMeasurement(){
   S.active=false;S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
   const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='none';
-  if(S.mode==='urban'){stopUrbanSession();return;}
-  if(S.mode==='comfort'){stopComfortSession();return;}
-  if(S.pts.length<2){toast('Sin datos suficientes');return;}
-  const segs=segmentize(S.pts,C.segLen),allC=S.pts.map(p=>p.iri_c),allM=S.pts.map(p=>p.iri_m);
-  S.pendingRoute={id:Date.now().toString(),date:new Date().toISOString(),pts:S.pts,segs,
-    avgC:allC.reduce((a,b)=>a+b,0)/allC.length,avgM:allM.reduce((a,b)=>a+b,0)/allM.length,
-    dist:S.dist,segLen:C.segLen,vehicleId:S.vehicleId};
+
+  const modesUsed=[...S.activeModes];
+  let iriData=null,urbanData=null,comfortData=null;
+
+  if(S.activeModes.has('urban')){
+    if(S.urbanEvents.length>0){mergeEventsIntoStorage(S.urbanEvents);urbanData={events:[...S.urbanEvents]};}
+    if(S.groundTruth&&S.groundTruth.length>0)showValidationResults();
+  }
+  if(S.activeModes.has('comfort')){
+    comfortData=collectComfortData();
+  }
+  if(S.activeModes.has('iri')&&S.pts.length>=2){
+    const segs=segmentize(S.pts,C.segLen),allC=S.pts.map(p=>p.iri_c),allM=S.pts.map(p=>p.iri_m);
+    iriData={segs,avgC:allC.reduce((a,b)=>a+b,0)/allC.length,avgM:allM.reduce((a,b)=>a+b,0)/allM.length,vehicleId:S.vehicleId};
+  }
+
+  if(!iriData&&!urbanData&&!comfortData){toast('Sin datos suficientes');return;}
+
+  const pts=S.activeModes.has('iri')?S.pts:(S.comfort.pts||[]);
+  S.pendingRoute={
+    id:Date.now().toString(),date:new Date().toISOString(),modesUsed,
+    pts,dist:S.dist,segLen:C.segLen,
+    segs:iriData?.segs||[],avgC:iriData?.avgC??null,avgM:iriData?.avgM??null,
+    vehicleId:iriData?.vehicleId||null,
+    iriData,urbanData,comfortData
+  };
   $('routeNameInput').value='';$('routeNameModal').classList.remove('hidden');
 }
+function collectComfortData(){
+  const cf=S.comfort;
+  if(cf._currentSegPts.length>0)closeComfortSegment();
+  if(cf.pts.length<2)return null;
+  const allAv=cf.pts.map(p=>p.av);
+  const avgAv=Math.sqrt(allAv.reduce((s,v)=>s+v*v,0)/allAv.length);
+  return{pts:cf.pts,segments:cf.segments,avgAv,
+    vdvSession:{z:getVDV('Z'),x:getVDV('X'),y:getVDV('Y')},
+    vehicleProfile:cf.vehicleProfile,fsUsed:cf.fsActual};
+}
 
-function stopUrbanSession(){
-  if(S.urbanEvents.length===0){toast('Sin eventos detectados en esta sesión');return;}
-  mergeEventsIntoStorage(S.urbanEvents);
-  toast(`✅ ${S.urbanEvents.length} eventos guardados`);
-  // Si hay ground truth, mostrar métricas de validación automáticamente
-  if(S.groundTruth&&S.groundTruth.length>0)showValidationResults();
-}
 function confirmSave(){
-  if(S.pendingComfortRoute){
-    S.pendingComfortRoute.name=$('routeNameInput').value.trim()||fmtD(Date.parse(S.pendingComfortRoute.date));
-    saveComfortRoute(S.pendingComfortRoute);$('routeNameModal').classList.add('hidden');
-    toast('✅ Ruta de confort · a_v '+S.pendingComfortRoute.avgAv.toFixed(3)+' m/s²');
-    S.pendingComfortRoute=null;return;
-  }
   if(!S.pendingRoute)return;
-  S.pendingRoute.name=$('routeNameInput').value.trim()||fmtD(Date.parse(S.pendingRoute.date));
-  saveRoute(S.pendingRoute);$('routeNameModal').classList.add('hidden');
-  toast('✅ Ruta guardada · IRI '+S.pendingRoute.avgC.toFixed(2)+' m/km');S.pendingRoute=null;
+  const r=S.pendingRoute;
+  r.name=$('routeNameInput').value.trim()||fmtD(Date.parse(r.date));
+  saveRoute(r);$('routeNameModal').classList.add('hidden');
+  const modesUsed=r.modesUsed||['iri'];
+  const parts=[];
+  if(modesUsed.includes('iri')&&r.avgC!=null)parts.push('IRI '+r.avgC.toFixed(2)+' m/km');
+  if(modesUsed.includes('comfort')&&r.comfortData)parts.push('a_v '+r.comfortData.avgAv.toFixed(3)+' m/s²');
+  if(modesUsed.includes('urban')&&r.urbanData)parts.push(r.urbanData.events.length+' eventos');
+  toast('✅ Guardado · '+(parts.join(' · ')||'OK'));
+  S.pendingRoute=null;
 }
-function discardRoute(){S.pendingRoute=null;S.pendingComfortRoute=null;$('routeNameModal').classList.add('hidden');toast('Ruta descartada');}
+function discardRoute(){S.pendingRoute=null;$('routeNameModal').classList.add('hidden');toast('Ruta descartada');}
 function startTimer(){S.timerStart=Date.now();S.timerRef=setInterval(()=>{if(S.paused)return;const e=Math.floor((Date.now()-S.timerStart)/1000);set('measTimer',String(Math.floor(e/60)).padStart(2,'0')+':'+String(e%60).padStart(2,'0'));},500);}
 function stopTimer(){clearInterval(S.timerRef);S.timerRef=null;}
 function segmentize(pts,sLen){
@@ -1491,11 +1565,28 @@ window.addEventListener('load',()=>{
   $('vExpSlider')?.addEventListener('input',function(){set('vExpLbl',parseFloat(this.value).toFixed(2));});
   $('vMinSlider')?.addEventListener('input',function(){set('vMinLbl',this.value);});
   set('segVal',C.segLen+' m');set('vrefVal',C.vRef+' km/h');
-  const savedMode=localStorage.getItem('rc_mode')||'iri';
-  if(savedMode!=='iri')setMode(savedMode);
-  // Doble rAF garantiza que el CSS clamp() ya está calculado
+  renderModeUI();
+  renderMainPanels();
+  // Doble rAF garantiza layout calculado antes de recalcMainLayout
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     initStaticMaps();
+    recalcMainLayout();
   }));
-  console.log('[Roadcheck IRI v3.2] OK');
+  window.addEventListener('resize',()=>recalcMainLayout());
+  console.log('[Pavement Check v4.0] OK');
 });
+
+// ─ Stubs Fase 8 (implementados en Fase 8) ─────
+function feedRawAxisChart(x,y,z){
+  if(!S.rawAxisBuf)return;
+  S.rawAxisBuf.x.push(x);S.rawAxisBuf.y.push(y);S.rawAxisBuf.z.push(z);
+  if(S.rawAxisBuf.x.length>S.rawAxisBuf.max){S.rawAxisBuf.x.shift();S.rawAxisBuf.y.shift();S.rawAxisBuf.z.shift();}
+  updateMeas3AxisChart();
+}
+function make3AxisChart(id){return null;} // placeholder hasta Fase 8
+function updateMeas3AxisChart(){} // placeholder hasta Fase 8
+function registerChartMark(color,source){
+  if(!S.chartMarks||!S.rawAxisBuf)return;
+  S.chartMarks.push({idx:S.rawAxisBuf.x.length-1,color,source,ts:Date.now()});
+  S.chartMarks=S.chartMarks.filter(m=>Date.now()-m.ts<3000);
+}
