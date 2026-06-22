@@ -435,7 +435,7 @@ function startCal(){
   if(!S.sensorOK){toast('Sensor no disponible');return;}
   S.calibrated=false;S.calPhase=1;S.calStart=Date.now();
   S.gravSamples=[];S.vibSamples=[];S.hpPrev=0;S.hpPrevIn=0;S.buf=[];
-  $('calPanel')?.classList.remove('hidden');
+  $('calPanel')?.classList.remove('hidden');recalcMainLayout();
   $('calFill').style.width='0%';
   set('calMsg','Fase 1/2: mantén el teléfono quieto…');set('calStep','FASE 1/2');
   set('calLbl','Calibrando…');$('calIco').textContent='⏳';set('calVal','');
@@ -460,7 +460,7 @@ function doCalSample(x,y,z){
   }
 }
 function endCal(ok,err=''){
-  S.calPhase=0;$('calPanel')?.classList.add('hidden');
+  S.calPhase=0;$('calPanel')?.classList.add('hidden');recalcMainLayout();
   if(!ok){set('calLbl','Calibrar');$('calIco').textContent='🎯';set('calVal','Requerido');toast('⚠️ Calibración fallida: '+err);return;}
   if(S.vibSamples.length>0){S.noiseLevel=Math.max(DEF.noiseFloor,rmsA(S.vibSamples)*1.5);C.noiseFloor=S.noiseLevel;saveCfg();}
   S.calibrated=true;S.hpPrev=0;S.hpPrevIn=0;S.buf=[];

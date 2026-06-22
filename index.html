@@ -88,9 +88,8 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 ══════════════════════════════════════════════════ */
 .map-wrap{
   flex-shrink:0;
-  /* Altura adaptativa: entre 128px y 248px según pantalla */
-  height:clamp(128px, calc((100vh  - 332px) * .58), 248px);
-  height:clamp(128px, calc((100dvh - 332px) * .58), 248px);
+  /* Altura calculada por recalcMainLayout() en JS tras render de paneles */
+  height:140px; /* fallback inicial mínimo */
   position:relative;border-radius:var(--r8);overflow:hidden;
   border:1px solid var(--ln2);background:var(--s2);
 }
