@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes">
+<title>Validación Filtros Wk/Wd — ISO 2631-1 · Roadcheck IRI</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#05111F;color:#B8D0E4;padding:14px}
+h1{font-size:.9rem;font-weight:700;color:#0EA5E9;letter-spacing:2px;font-family:'Courier New',monospace;text-transform:uppercase;margin-bottom:4px}
+.sub{font-size:.63rem;color:#3A5F7A;margin-bottom:14px;line-height:1.6}
+.warn{background:#0D2040;border:1px solid rgba(245,158,11,.35);border-radius:6px;padding:11px 13px;margin-bottom:14px;font-size:.63rem;color:#B8D0E4;line-height:1.7}
+.warn b{color:#F59E0B}
+.ctrl{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end}
+label{font-size:.6rem;text-transform:uppercase;letter-spacing:1px;color:#3A5F7A;font-family:'Courier New',monospace;display:block;margin-bottom:3px}
+select,input[type=number]{padding:7px 10px;background:#091829;border:1px solid rgba(14,165,233,.25);border-radius:4px;color:#B8D0E4;font-size:.73rem;font-family:'Courier New',monospace}
+button{padding:8px 16px;background:rgba(14,165,233,.15);border:1px solid rgba(14,165,233,.3);border-radius:4px;color:#0EA5E9;font-size:.7rem;font-weight:700;cursor:pointer;letter-spacing:.5px;text-transform:uppercase}
+button:hover{background:rgba(14,165,233,.25)}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+@media(max-width:600px){.charts{grid-template-columns:1fr}}
+.bx{background:#091829;border:1px solid rgba(14,165,233,.15);border-radius:6px;padding:10px}
+.bx h3{font-size:.6rem;text-transform:uppercase;letter-spacing:2px;color:#0EA5E9;font-family:'Courier New',monospace;margin-bottom:8px}
+.bx canvas{display:block}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.67rem;font-family:'Courier New',monospace}
+th{background:#091829;padding:6px 10px;text-align:left;color:#3A5F7A;font-size:.57rem;text-transform:uppercase;letter-spacing:.8px}
+td{padding:5px 10px;border-bottom:1px solid rgba(14,165,233,.07)}
+.good{color:#10B981}.warn-val{color:#F59E0B}.bad-val{color:#EF4444}
+.result{background:#091829;border:1px solid rgba(14,165,233,.15);border-radius:6px;padding:11px 13px;font-size:.64rem;line-height:1.8;font-family:'Courier New',monospace;margin-bottom:14px}
+</style>
+</head>
+<body>
+<h1>Fase 7 — Validación de Respuesta en Frecuencia · Filtros Wk/Wd ISO 2631-1</h1>
+<p class="sub">Herramienta de validación independiente de la app. Construye los filtros digitales con la misma lógica que app.js y mide su respuesta en frecuencia mediante barrido de senoidales sintéticas.<br>La curva resultante debe coincidir razonablemente con la curva publicada de Wk/Wd — si no coincide, el módulo no es válido para uso pericial.</p>
+
+<div class="warn">
+  <b>⚠ Advertencia metodológica:</b> Los parámetros de filtro (ISO2631_PARAMS) son una reconstrucción desde fuentes secundarias, <b>no una transcripción verificada del texto oficial de la norma</b>. Esta herramienta valida que el filtro implementado reproduce la forma característica publicada de Wk/Wd. Si la curva generada no coincide con la referencia, revisar los parámetros de la Fase 2.2 del spec antes de cualquier uso pericial.
+</div>
+
+<div class="ctrl">
+  <div><label>fs (Hz)</label><input type="number" id="fsInput" value="60" min="20" max="200" step="5" style="width:90px"></div>
+  <div><label>Muestras de estabilización</label><input type="number" id="warmupInput" value="2000" min="200" max="10000" step="200" style="width:110px"></div>
+  <div><label>Muestras de medición</label><input type="number" id="measInput" value="3000" min="500" max="20000" step="500" style="width:110px"></div>
+  <div style="align-self:flex-end"><button onclick="runSweep()">▶ Ejecutar barrido</button></div>
+</div>
+
+<div class="result" id="result">Pulsa "Ejecutar barrido" para generar las curvas de respuesta en frecuencia.</div>
+
+<div class="charts">
+  <div class="bx">
+    <h3>Wk — Eje vertical Z (esperado: pico 4-8 Hz)</h3>
+    <canvas id="chartWk" height="260"></canvas>
+  </div>
+  <div class="bx">
+    <h3>Wd — Ejes horizontales X/Y (esperado: pico 0.5-2 Hz)</h3>
+    <canvas id="chartWd" height="260"></canvas>
+  </div>
+</div>
+
+<div class="bx" style="margin-bottom:14px">
+  <h3>Tabla de valores — Respuesta en dB por frecuencia (tercio de octava)</h3>
+  <div class="table-wrap">
+    <table id="resultTable">
+      <thead><tr><th>Frecuencia (Hz)</th><th>Wk (dB)</th><th>Wk (ganancia)</th><th>Wd (dB)</th><th>Wd (ganancia)</th><th>Evaluación</th></tr></thead>
+      <tbody id="tableBody"><tr><td colspan="6" style="color:#3A5F7A;text-align:center">Sin datos — ejecuta el barrido primero</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="warn" style="font-size:.61rem">
+  <b>Referencia visual esperada:</b><br>
+  <b>Wk:</b> ganancia máxima entre 4-8 Hz; caída pronunciada por debajo de 1 Hz y por encima de 20 Hz; "hombro" ascendente entre 2-4 Hz.<br>
+  <b>Wd:</b> ganancia máxima en banda baja ~0.5-2 Hz; sin el escalón de Wk; curva más simple y centrada en frecuencias bajas.<br>
+  Si la curva difiere significativamente, revisar: orden de las secciones en cascada, posible confusión entre HP/LP en alguna sección, error en pre-distorsión de frecuencia.
+</div>
+
+<!-- ── implementación de filtros (copia exacta de app.js) ── -->
+<script>
+// ⚠️ Esta implementación debe mantenerse sincronizada con app.js (buildWkCascade, buildWdCascade)
+const ISO2631_PARAMS={
+  bandLimit:{f1:0.4,f2:100,Q:0.71},
+  transition_Wk:{f:12.5,Q:0.63},
+  transition_Wd:{f:2.0,Q:0.63},
+  step_Wk:{f5:2.37,Q5:0.91,f6:3.35,Q6:0.91}
+};
+
+function bilinearTransform(b2,b1,b0,a2,a1,a0,fs){
+  const c=2*fs;
+  const a0d=a2*c*c+a1*c+a0;
+  return{b0:(b2*c*c+b1*c+b0)/a0d,b1:(2*b0-2*b2*c*c)/a0d,b2:(b2*c*c-b1*c+b0)/a0d,
+         a1:(2*a0-2*a2*c*c)/a0d,a2:(a2*c*c-a1*c+a0)/a0d};
+}
+function makeBiquad(co){
+  let z1=0,z2=0;
+  return x=>{const y=co.b0*x+z1;z1=co.b1*x-co.a1*y+z2;z2=co.b2*x-co.a2*y;return y;};
+}
+function prewarp(fHz,fs){return 2*fs*Math.tan(Math.PI*fHz/fs);}
+function highPassSection(fHz,Q,fs){const w=prewarp(fHz,fs);return bilinearTransform(1,0,0,1,w/Q,w*w,fs);}
+function lowPassSection(fHz,Q,fs){const w=prewarp(fHz,fs);return bilinearTransform(0,0,w*w,1,w/Q,w*w,fs);}
+function transitionSection(fHz,Q,fs){const w=prewarp(fHz,fs);return bilinearTransform(0,0,w*w,1,w/Q,w*w,fs);}
+function stepSection(f5,Q5,f6,Q6,fs){
+  const w5=prewarp(f5,fs),w6=prewarp(f6,fs);
+  const sec1=bilinearTransform(0,0,w6*w6,1,w5/Q5,w5*w5,fs);
+  const sec2=bilinearTransform(1,w6/Q6,w6*w6,1,w6/Q6,w6*w6,fs);
+  return[sec1,sec2];
+}
+function buildWkCascade(fs){
+  const p=ISO2631_PARAMS;
+  const hp=highPassSection(p.bandLimit.f1,p.bandLimit.Q,fs);
+  const lp=lowPassSection(p.bandLimit.f2,p.bandLimit.Q,fs);
+  const tr=transitionSection(p.transition_Wk.f,p.transition_Wk.Q,fs);
+  const st=stepSection(p.step_Wk.f5,p.step_Wk.Q5,p.step_Wk.f6,p.step_Wk.Q6,fs);
+  const stages=[makeBiquad(hp),makeBiquad(lp),makeBiquad(tr),makeBiquad(st[0]),makeBiquad(st[1])];
+  return x=>stages.reduce((v,s)=>s(v),x);
+}
+function buildWdCascade(fs){
+  const p=ISO2631_PARAMS;
+  const hp=highPassSection(p.bandLimit.f1,p.bandLimit.Q,fs);
+  const lp=lowPassSection(p.bandLimit.f2,p.bandLimit.Q,fs);
+  const tr=transitionSection(p.transition_Wd.f,p.transition_Wd.Q,fs);
+  const stages=[makeBiquad(hp),makeBiquad(lp),makeBiquad(tr)];
+  return x=>stages.reduce((v,s)=>s(v),x);
+}
+
+// Frecuencias de barrido: tercios de octava estándar de la norma
+const SWEEP_FREQS=[0.5,1,2,3,4,5,6.3,8,10,12.5,16,20,25,31.5,40,50];
+
+function measureResponse(filterFn,fHz,fs,warmup,meas){
+  const omega=2*Math.PI*fHz/fs;
+  // Estabilización
+  let x=0;
+  for(let i=0;i<warmup;i++){x=Math.sin(omega*i);filterFn(x);}
+  // Medición RMS de salida y entrada
+  let sumOut=0,sumIn=0,n=0;
+  for(let i=0;i<meas;i++){
+    const inp=Math.sin(omega*(warmup+i));
+    const out=filterFn(inp);
+    sumOut+=out*out;sumIn+=inp*inp;n++;
+  }
+  const rmsOut=Math.sqrt(sumOut/n);
+  const rmsIn=Math.sqrt(sumIn/n);
+  return rmsIn>0?rmsOut/rmsIn:0;
+}
+
+let chartWk=null,chartWd=null;
+
+function runSweep(){
+  const fs=parseFloat(document.getElementById('fsInput').value)||60;
+  const warmup=parseInt(document.getElementById('warmupInput').value)||2000;
+  const meas=parseInt(document.getElementById('measInput').value)||3000;
+  document.getElementById('result').textContent='Ejecutando barrido de frecuencias…';
+
+  // Construir dos instancias frescas (sin estado compartido)
+  const wkFilter=buildWkCascade(fs);
+  const wdFilter=buildWdCascade(fs);
+
+  const wkGains=[],wdGains=[],wkDb=[],wdDb=[];
+  const valid=SWEEP_FREQS.filter(f=>f<fs/2); // solo freqs por debajo de Nyquist
+
+  valid.forEach(f=>{
+    const wkG=measureResponse(buildWkCascade(fs),f,fs,warmup,meas);
+    const wdG=measureResponse(buildWdCascade(fs),f,fs,warmup,meas);
+    wkGains.push(wkG);wdGains.push(wdG);
+    wkDb.push(20*Math.log10(Math.max(1e-10,wkG)));
+    wdDb.push(20*Math.log10(Math.max(1e-10,wdG)));
+  });
+
+  // Diagnóstico automático
+  const wkPeakIdx=wkGains.indexOf(Math.max(...wkGains));
+  const wdPeakIdx=wdGains.indexOf(Math.max(...wdGains));
+  const wkPeakF=valid[wkPeakIdx];
+  const wdPeakF=valid[wdPeakIdx];
+  const wkOk=wkPeakF>=3&&wkPeakF<=10;
+  const wdOk=wdPeakF>=0.5&&wdPeakF<=3;
+
+  document.getElementById('result').innerHTML=
+    `<b>Resultados del barrido</b> (fs=${fs} Hz · warmup=${warmup} · meas=${meas})<br>`+
+    `Wk: pico en <b style="color:${wkOk?'#10B981':'#EF4444'}">${wkPeakF} Hz</b> (esperado: 4-8 Hz) → ${wkOk?'<span style="color:#10B981">✓ Plausible</span>':'<span style="color:#EF4444">✗ Fuera de rango esperado — revisar parámetros Fase 2</span>'}<br>`+
+    `Wd: pico en <b style="color:${wdOk?'#10B981':'#EF4444'}">${wdPeakF} Hz</b> (esperado: 0.5-2 Hz) → ${wdOk?'<span style="color:#10B981">✓ Plausible</span>':'<span style="color:#EF4444">✗ Fuera de rango esperado — revisar parámetros Fase 2</span>'}`;
+
+  // Tabla
+  const tbody=document.getElementById('tableBody');
+  tbody.innerHTML=valid.map((f,i)=>{
+    const wkOkCell=wkGains[i]>0.01&&wkGains[i]<2;
+    const wdOkCell=wdGains[i]>0.01&&wdGains[i]<2;
+    const eval_=wkOkCell&&wdOkCell?'<span class="good">OK</span>':'<span class="warn-val">Revisar</span>';
+    return`<tr><td>${f}</td><td>${wkDb[i].toFixed(1)}</td><td>${wkGains[i].toFixed(4)}</td><td>${wdDb[i].toFixed(1)}</td><td>${wdGains[i].toFixed(4)}</td><td>${eval_}</td></tr>`;
+  }).join('');
+
+  // Gráficos
+  const opts=(title,col)=>({
+    responsive:true,maintainAspectRatio:false,animation:false,
+    plugins:{legend:{display:false},title:{display:true,text:title,color:'#5A7E9C',font:{size:11}}},
+    scales:{
+      x:{type:'category',title:{display:true,text:'Frecuencia (Hz)',color:'#3A5F7A',font:{size:10}},
+         ticks:{color:'#3A5F7A',font:{size:10}}},
+      y:{title:{display:true,text:'Ganancia (dB)',color:col,font:{size:10}},
+         ticks:{color:col,font:{size:10}},grid:{color:'rgba(14,165,233,.07)'}}
+    }
+  });
+
+  if(chartWk){chartWk.destroy();}
+  chartWk=new Chart(document.getElementById('chartWk'),{
+    type:'line',
+    data:{labels:valid.map(String),datasets:[{data:wkDb,borderColor:'#0EA5E9',backgroundColor:'rgba(14,165,233,.08)',fill:true,tension:.3,pointRadius:4,pointHoverRadius:7}]},
+    options:opts('Wk — Respuesta en frecuencia','#0EA5E9')
+  });
+  if(chartWd){chartWd.destroy();}
+  chartWd=new Chart(document.getElementById('chartWd'),{
+    type:'line',
+    data:{labels:valid.map(String),datasets:[{data:wdDb,borderColor:'#F59E0B',backgroundColor:'rgba(245,158,11,.08)',fill:true,tension:.3,pointRadius:4,pointHoverRadius:7}]},
+    options:opts('Wd — Respuesta en frecuencia','#F59E0B')
+  });
+}
+
+// Ejecutar automáticamente al cargar con valores por defecto
+window.addEventListener('load',()=>setTimeout(runSweep,200));
+</script>
+</body>
+</html>

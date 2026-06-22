@@ -1,4 +1,4 @@
-# Roadcheck IRI — Documentación del Módulo Urbano
+# Roadcheck IRI — Documentación de Módulos
 
 ## Arquitectura general
 
@@ -9,9 +9,10 @@ PWA vanilla JS sin build step. Stack: Leaflet (mapas), Chart.js (gráficos), loc
 | Fichero | Responsabilidad |
 |---|---|
 | `index.html` | Shell de la app, CSS, HTML declarativo |
-| `app.js` | Todo el motor (IRI + Urbano) |
+| `app.js` | Todo el motor (IRI + Urbano + Confort) |
 | `manifest.json` | Metadatos PWA |
 | `sw.js` | Service worker de caché |
+| `comfort_filter_test.html` | Herramienta standalone de validación Fase 7 — filtros Wk/Wd |
 
 ---
 
@@ -36,7 +37,7 @@ onRaw(x,y,z)
 ### Estado global (objeto `S`)
 
 ```javascript
-S.mode          // 'iri' | 'urban'
+S.mode          // 'iri' | 'urban' | 'comfort'
 S.urbanBuf      // últimas 90 muestras {t, ax, ay, az, vert}
 S.urbanBufMax   // 90
 S.urbanEvents   // eventos de la sesión activa
@@ -102,7 +103,7 @@ Todos en `app.js`. Valores de punto de partida de ingeniería:
 
 ---
 
-## Próximos pasos de validación en campo (Fase 7)
+## Próximos pasos de validación en campo — Módulo Urbano
 
 1. Conducir en zona urbana conocida con baches identificados manualmente.
 2. Marcar cada bache con `🏷️ Marcar bache real` en el momento del paso.
@@ -113,3 +114,71 @@ Todos en `app.js`. Valores de punto de partida de ingeniería:
    - Muchos FN → bajar umbral sigma o subir pesos de `amp`/`jerk`
    - Clasificación errónea → ajustar umbrales de duración en `classifyType()`
 6. Si la energía espectral resulta insuficiente, sustituir los cruces por cero por una FFT real (p. ej. con `fft.js` ~8 KB) operando sobre `S.urbanBuf`.
+
+---
+
+## Módulo Confort de Marcha (ISO 2631-1)
+
+### Modo de activación
+
+Tercer botón `📳 Confort` en `#modeSwitch` → `setMode('comfort')`. Persiste en `localStorage('rc_mode')`.
+
+### Pipeline de procesado (modo confort activo + calibrado)
+
+```
+onRaw(x,y,z)
+  └─ onComfortSample()        — proyecta ejes, aplica filtros Wk/Wd en cascada
+       ├─ trackSampleRate()    — mide fs real; reconstruye filtros si cambia >10%
+       ├─ updateRunningRMSComfort() — ventana deslizante 1s por eje
+       ├─ accumulateVDV()      — suma de |w|^4·dt (método de integración trapezoidal)
+       └─ computeLiveComfort() — combinación vectorial con factores k → avLive
+            └─ updateComfortUI() — panel, barra, VDV en tiempo real
+```
+
+### Estado global `S.comfort`
+
+```javascript
+S.comfort = {
+  fsActual,               // Hz medido en tiempo real
+  filtersZ/X/Y,           // funciones de cascada biquad (Wk para Z, Wd para X/Y)
+  rmsWindowZ/X/Y,         // ventana deslizante 1s para RMS continuo
+  avLive,                 // a_v combinada actual (m/s²)
+  sumPow4Z/X/Y,           // acumuladores VDV (cuarta potencia)
+  segments, pts,          // ruta activa
+  _currentSegPts,         // puntos del segmento en curso
+  _segDist, _segStartPow4Z // tracking de segmentación
+}
+```
+
+### Estructura de un segmento de confort
+
+```javascript
+{ pts: [{lat,lon},...], avAvg, vdv, level, color }
+// level: 'no_confortable'|'poco'|'moderado'|'incomodo'|'muy_incomodo'|'extremo'
+```
+
+### Persistencia
+
+- `rc_comfort_routes` — rutas de confort guardadas (paralelo a `rc_routes`)
+
+### Funciones de exportación
+
+- `expComfortXLSX(id)` — hoja Datos + hoja Segmentos + hoja Resumen (con disclaimer ISO)
+- `expComfortHTML(id)` — informe con mapa de calor + gráfico + disclaimer pericial
+
+### Filtros ISO 2631-1 — parámetros y advertencia
+
+Los parámetros en `ISO2631_PARAMS` son una **reconstrucción desde fuentes secundarias**, no una transcripción verificada del texto oficial. Ver advertencia completa en `RIDE_COMFORT_SPEC.md` Fase 0.
+
+### Validación de Fase 7 — Resultado del barrido de frecuencias
+
+**Herramienta:** `comfort_filter_test.html` (standalone, ejecutar en navegador local)
+
+**Resultado observado con fs=60Hz:**
+- **Wk:** el barrido de senoidales sintéticas muestra pico de ganancia en la banda 4-8 Hz, con caída progresiva a frecuencias inferiores (por debajo de 1 Hz la ganancia cae notablemente por el HP de 0.4 Hz) y caída a frecuencias superiores a 20 Hz. La sección `stepSection` produce un hombro ascendente entre ~2-4 Hz, visible como un escalón en la curva dB.
+- **Wd:** pico de ganancia desplazado a frecuencias más bajas (~1-2 Hz), sin el hombro del Wk, curva más simple y simétrica en torno a 1 Hz.
+- **Conclusión:** la forma general de ambas curvas es consistente con la descripción publicada de Wk/Wd en literatura técnica. Los valores absolutos de ganancia deben compararse contra la curva oficial de la norma si se dispone de ella antes de uso pericial.
+
+**Disclaimer metodológico pericial (incluir literal en todos los informes):**
+
+> *"El valor de confort de marcha mostrado es una estimación obtenida mediante acelerómetro de smartphone, aplicando las curvas de ponderación en frecuencia definidas en la norma ISO 2631-1:1997, calculadas mediante reconstrucción digital de los filtros normativos (ver metodología). No constituye una medición con instrumento certificado conforme a ISO 8041. El valor debe interpretarse como indicador orientativo de ingeniería de campo, no como medición acreditada de laboratorio."*
