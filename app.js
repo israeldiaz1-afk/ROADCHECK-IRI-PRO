@@ -1141,8 +1141,72 @@ function allComfortRoutes(){try{return JSON.parse(localStorage.getItem('rc_comfo
 function saveComfortRoute(r){try{const rs=allComfortRoutes();rs.push(r);localStorage.setItem('rc_comfort_routes',JSON.stringify(rs));}catch(e){toast('Error guardando ruta de confort');}}
 function delComfortRoute(id){localStorage.setItem('rc_comfort_routes',JSON.stringify(allComfortRoutes().filter(r=>r.id!==id)));}
 
-// ─ comfort filters (Fase 2) ───────────────────
-function rebuildComfortFilters(fs){/* implemented in Fase 2 */}
+// ─ comfort filters ISO 2631-1 (Fase 2) ────────
+// ⚠️ Parámetros reconstruidos desde fuentes secundarias — validar curva en Fase 7.
+const ISO2631_PARAMS={
+  bandLimit:{f1:0.4,f2:100,Q:0.71},
+  transition_Wk:{f:12.5,Q:0.63},
+  transition_Wd:{f:2.0,Q:0.63},
+  step_Wk:{f5:2.37,Q5:0.91,f6:3.35,Q6:0.91}
+};
+
+function bilinearTransform(b2,b1,b0,a2,a1,a0,fs){
+  const c=2*fs;
+  const a0d=a2*c*c+a1*c+a0;
+  return{b0:(b2*c*c+b1*c+b0)/a0d,b1:(2*b0-2*b2*c*c)/a0d,b2:(b2*c*c-b1*c+b0)/a0d,
+         a1:(2*a0-2*a2*c*c)/a0d,a2:(a2*c*c-a1*c+a0)/a0d};
+}
+function makeBiquad(co){
+  let z1=0,z2=0;
+  return x=>{const y=co.b0*x+z1;z1=co.b1*x-co.a1*y+z2;z2=co.b2*x-co.a2*y;return y;};
+}
+function prewarp(fHz,fs){return 2*fs*Math.tan(Math.PI*fHz/fs);}
+function highPassSection(fHz,Q,fs){const w=prewarp(fHz,fs);return bilinearTransform(1,0,0,1,w/Q,w*w,fs);}
+function lowPassSection(fHz,Q,fs){const w=prewarp(fHz,fs);return bilinearTransform(0,0,w*w,1,w/Q,w*w,fs);}
+function transitionSection(fHz,Q,fs){const w=prewarp(fHz,fs);return bilinearTransform(0,0,w*w,1,w/Q,w*w,fs);}
+function stepSection(f5,Q5,f6,Q6,fs){
+  const w5=prewarp(f5,fs),w6=prewarp(f6,fs);
+  const sec1=bilinearTransform(0,0,w6*w6,1,w5/Q5,w5*w5,fs);
+  const sec2=bilinearTransform(1,w6/Q6,w6*w6,1,w6/Q6,w6*w6,fs);
+  return[sec1,sec2];
+}
+function buildWkCascade(fs){
+  const p=ISO2631_PARAMS;
+  const hp=highPassSection(p.bandLimit.f1,p.bandLimit.Q,fs);
+  const lp=lowPassSection(p.bandLimit.f2,p.bandLimit.Q,fs);
+  const tr=transitionSection(p.transition_Wk.f,p.transition_Wk.Q,fs);
+  const st=stepSection(p.step_Wk.f5,p.step_Wk.Q5,p.step_Wk.f6,p.step_Wk.Q6,fs);
+  const stages=[makeBiquad(hp),makeBiquad(lp),makeBiquad(tr),makeBiquad(st[0]),makeBiquad(st[1])];
+  return x=>stages.reduce((v,s)=>s(v),x);
+}
+function buildWdCascade(fs){
+  const p=ISO2631_PARAMS;
+  const hp=highPassSection(p.bandLimit.f1,p.bandLimit.Q,fs);
+  const lp=lowPassSection(p.bandLimit.f2,p.bandLimit.Q,fs);
+  const tr=transitionSection(p.transition_Wd.f,p.transition_Wd.Q,fs);
+  const stages=[makeBiquad(hp),makeBiquad(lp),makeBiquad(tr)];
+  return x=>stages.reduce((v,s)=>s(v),x);
+}
+function rebuildComfortFilters(fs){
+  const cf=S.comfort;
+  cf.filtersZ=buildWkCascade(fs);
+  cf.filtersX=buildWdCascade(fs);
+  cf.filtersY=buildWdCascade(fs);
+}
+function trackSampleRate(timestamp){
+  const cf=S.comfort;
+  if(cf._lastTs){
+    const dt=timestamp-cf._lastTs;
+    if(dt>0&&dt<100){cf._dtBuffer.push(dt);if(cf._dtBuffer.length>120)cf._dtBuffer.shift();}
+  }
+  cf._lastTs=timestamp;
+  if(cf._dtBuffer.length>=60){
+    const avgDt=cf._dtBuffer.reduce((a,b)=>a+b,0)/cf._dtBuffer.length;
+    const measuredFs=1000/avgDt;
+    if(Math.abs(measuredFs-cf.fsActual)/cf.fsActual>0.10){cf.fsActual=measuredFs;rebuildComfortFilters(measuredFs);}
+  }
+}
+
 function onComfortSample(x,y,z,ts){/* implemented in Fase 3 */}
 function computeLiveComfort(){/* implemented in Fase 3 */}
 function updateComfortUI(av){/* implemented in Fase 4 */}
