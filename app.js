@@ -245,13 +245,13 @@ function tryAccel(){
       window._accel.addEventListener('reading',()=>onRaw(window._accel.x||0,window._accel.y||0,window._accel.z||0));
       window._accel.addEventListener('error',()=>motionFB());
       window._accel.start();S.sensorOK=true;
-      setChip('cSEN','dSEN','lSEN','warn','#F59E0B','SEN NCAL');
+      setChip('cSEN','dSEN','lSEN','warn','#F59E0B','Sin calibrar');
     }catch(e){motionFB();}
   }else{motionFB();}
 }
 function motionFB(){
   window.addEventListener('devicemotion',e=>{const a=e.accelerationIncludingGravity;if(a)onRaw(a.x||0,a.y||0,a.z||0);},{passive:true});
-  S.sensorOK=true;setChip('cSEN','dSEN','lSEN','warn','#F59E0B','SEN NCAL');
+  S.sensorOK=true;setChip('cSEN','dSEN','lSEN','warn','#F59E0B','Sin calibrar');
 }
 function onRaw(x,y,z){
   if(!S.sensorOK)return;
@@ -461,7 +461,7 @@ function doCalSample(x,y,z){
 }
 function endCal(ok,err=''){
   S.calPhase=0;$('calPanel')?.classList.add('hidden');recalcMainLayout();
-  if(!ok){set('calLbl','Calibrar');$('calIco').textContent='🎯';set('calVal','Requerido');toast('⚠️ Calibración fallida: '+err);return;}
+  if(!ok){set('calLbl','Calibrar');$('calIco').textContent='🎯';set('calVal','Pulsa para calibrar');toast('⚠️ Calibración fallida: '+err);return;}
   if(S.vibSamples.length>0){S.noiseLevel=Math.max(DEF.noiseFloor,rmsA(S.vibSamples)*1.5);C.noiseFloor=S.noiseLevel;saveCfg();}
   S.calibrated=true;S.hpPrev=0;S.hpPrevIn=0;S.buf=[];
   setChip('cSEN','dSEN','lSEN','ok','#10B981','SEN CAL');
@@ -471,7 +471,7 @@ function endCal(ok,err=''){
   $('calReqNote')?.classList.add('off');
   set('iriM','0.00');set('iriC','0.00');
   const cd=$('iriCond');if(cd){cd.textContent='Sin movimiento';cd.style.color='var(--dim)';}
-  toast('✅ Calibración OK · Ruido: '+S.noiseLevel.toFixed(3)+' m/s²');
+  toast('✅ Todo listo — calibración completada · Ruido: '+S.noiseLevel.toFixed(3)+' m/s²');
 }
 function doCalibrate(){startCal();}
 
