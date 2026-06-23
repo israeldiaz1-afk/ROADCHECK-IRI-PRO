@@ -358,6 +358,14 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .urban-label-btn{position:fixed;bottom:calc(var(--tab-h)+var(--safe-b)+14px);right:14px;z-index:2900;padding:10px 14px;border-radius:var(--r8);border:1px solid var(--ln2);background:var(--s1);color:var(--txt);font-family:var(--mono);font-size:.6rem;font-weight:700;cursor:pointer;box-shadow:0 3px 14px rgba(0,0,0,.5);display:none}
 .hidden{display:none!important}
 .tag{font-size:.5rem;background:var(--s2);padding:2px 6px;border-radius:3px;color:var(--dim);font-family:var(--mono)}
+/* ── CAMERA SELECTOR ── */
+.cam-opt{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r8);background:var(--s2);border:1px solid var(--ln);cursor:pointer;font-size:var(--fs-sm)}
+.cam-opt input{accent-color:var(--sky);width:14px;height:14px;flex-shrink:0}
+/* ── PHOTO LIGHTBOX ── */
+.photo-lightbox{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.photo-lightbox img{max-width:100%;max-height:75vh;border-radius:8px;object-fit:contain}
+.lightbox-info{color:var(--txt);font-family:var(--mono);font-size:var(--fs-sm);margin-top:10px;text-align:center}
+.lightbox-close{position:absolute;top:16px;right:16px;background:rgba(255,255,255,.1);border:none;color:#fff;font-size:1.4rem;width:44px;height:44px;border-radius:50%;cursor:pointer}
 /* ── MAP CENTER BUTTON ── */
 .btn-map-center{position:absolute;bottom:12px;right:12px;z-index:1000;width:44px;height:44px;background:var(--s1);border:2px solid rgba(14,165,233,.4);border-radius:50%;color:var(--sky);font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:background .15s}
 .btn-map-center:active{background:rgba(14,165,233,.2)}
@@ -509,6 +517,27 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 <div id="routeNameModal" class="modal-bg hidden"><div class="modal"><div class="mh"></div><h3>Guardar Ruta</h3><p class="sub">Asigna un nombre descriptivo a esta ruta.</p><span class="m-lbl">Nombre de la ruta</span><input type="text" class="m-in" id="routeNameInput" placeholder="Ej: Calle Mayor — Tramo Norte…"><div class="modal-btns"><button class="btn btn-red" onclick="discardRoute()">Descartar</button><button class="btn btn-pri" style="flex:1" onclick="confirmSave()">Guardar</button></div></div></div>
 <div id="overlapModal" class="modal-bg hidden"><div class="modal"><div class="mh"></div><h3>Tramos Coincidentes</h3><p class="sub">Solapamientos detectados entre las rutas seleccionadas:</p><ul id="overlapList" class="ov-list"></ul><p style="font-size:.63rem;color:var(--dim);margin-top:5px;line-height:1.6">¿Combinar y promediar los valores IRI en los tramos coincidentes?</p><div class="modal-btns"><button class="btn btn-sec" onclick="resolveOverlap(false)">Por separado</button><button class="btn btn-pri" style="flex:1" onclick="resolveOverlap(true)">Sí, combinar</button></div></div></div>
 <div id="sensorPermModal" class="modal-bg hidden"><div class="modal"><div class="mh"></div><h3>Permiso de Movimiento</h3><p class="sub">iOS 13+ requiere permiso para acceder al acelerómetro.</p><button class="btn btn-pri" style="width:100%;padding:12px;margin-bottom:6px" onclick="grantIOS()">Conceder acceso</button><button class="btn btn-sec" style="width:100%" onclick="document.getElementById('sensorPermModal').classList.add('hidden')">Cancelar</button></div></div>
+
+<!-- MODAL SELECTOR DE CÁMARA -->
+<div class="modal-bg hidden" id="cameraSelectorModal">
+  <div class="modal">
+    <div class="mh"></div>
+    <h3>📷 Seleccionar cámara</h3>
+    <p class="sub">Se detectaron varias cámaras. Selecciona cuál usar para capturar eventos.</p>
+    <div id="cameraDeviceList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:4px"></div>
+    <div class="modal-btns" style="margin-top:10px">
+      <button class="btn btn-pri" style="flex:1" onclick="confirmCameraSelection()">Usar esta cámara</button>
+      <button class="btn btn-sec" onclick="skipCamera()">Sin cámara</button>
+    </div>
+  </div>
+</div>
+
+<!-- LIGHTBOX FOTOS -->
+<div class="photo-lightbox hidden" id="photoLightbox" onclick="closeLightbox()">
+  <img id="lightboxImg" alt="Evento detectado">
+  <div class="lightbox-info" id="lightboxInfo"></div>
+  <button class="lightbox-close" onclick="event.stopPropagation();closeLightbox()">✕</button>
+</div>
 
 <!-- BOTÓN FLOTANTE DE ETIQUETADO (Fase 7 — visible solo en modo urbano + sesión activa) -->
 <button class="urban-label-btn" id="urbanLabelBtn" onclick="markGroundTruth()">🏷️ Marcar bache real</button>

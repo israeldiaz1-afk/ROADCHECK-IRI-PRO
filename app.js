@@ -846,7 +846,7 @@ function startMeasurement(){
     S.iriMA=0;S.iriCA=0;S.iriN=0;S.iriMax=0;S.iriMin=Infinity;S.iriSum=0;S.iriCnt=0;
   }
 
-  if(S.activeModes.has('urban')||S.activeModes.has('comfort'))startVideoBuffer();
+  if(S.activeModes.has('urban')||S.activeModes.has('comfort'))initCameraSelector();
   $('meas-sc').classList.remove('hidden');
   updateMeasPanel();
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
@@ -1966,8 +1966,25 @@ async function analyzeEventWithGemini(event,imageBlob){
 function showEventThumbnail(event,blob){
   const url=URL.createObjectURL(blob);
   const thumb=$('lastEventThumb');
-  if(thumb){thumb.src=url;thumb.style.display='block';thumb.title=event.geminiDescription||event.type;setTimeout(()=>URL.revokeObjectURL(url),30000);}
+  if(thumb){
+    thumb.src=url;thumb.style.display='block';thumb.title=event.geminiDescription||event.type;
+    thumb.onclick=()=>openLightbox(url,event);
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }
 }
+function openLightbox(url,event){
+  $('lightboxImg').src=url;
+  const info=event.geminiDescription
+    ?'🔍 '+event.geminiDescription+' · '+event.type+' · '+event.severity
+    :event.type+' · '+event.severity+' · score '+(event.score?.toFixed(0)||'—');
+  set('lightboxInfo',info);
+  $('photoLightbox').classList.remove('hidden');
+}
+function closeLightbox(){
+  $('photoLightbox').classList.add('hidden');
+  $('lightboxImg').src='';
+}
+window.closeLightbox=closeLightbox;
 
 function updateUrbanMeasPanel(){
   const counts=S.urbanEvents.reduce((a,e)=>{a[e.severity]=(a[e.severity]||0)+1;return a;},{});
@@ -1981,10 +1998,44 @@ function updateUrbanMeasPanel(){
 // ─ Buffer de vídeo (Fase 2) ───────────────────
 const VIDEO_BUF={stream:null,video:null,canvas:null,ctx:null,frames:[],maxAgeMs:3000,capturing:false,captureInterval:null};
 
+async function initCameraSelector(){
+  try{
+    await navigator.mediaDevices.getUserMedia({video:true,audio:false}).then(s=>s.getTracks().forEach(t=>t.stop()));
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const videoDevices=devices.filter(d=>d.kind==='videoinput');
+    if(videoDevices.length<=1){S.selectedCameraId=videoDevices[0]?.deviceId||null;startVideoBuffer();return;}
+    showCameraSelector(videoDevices);
+  }catch(e){
+    console.log('[Cámara] No disponible: '+e.message);
+  }
+}
+function showCameraSelector(devices){
+  $('cameraSelectorModal').classList.remove('hidden');
+  $('cameraDeviceList').innerHTML=devices.map((d,i)=>`
+    <label class="cam-opt">
+      <input type="radio" name="camDev" value="${d.deviceId}" ${i===0?'checked':''}>
+      <span>${d.label||'Cámara '+(i+1)}</span>
+    </label>
+  `).join('');
+}
+function confirmCameraSelection(){
+  const sel=document.querySelector('input[name="camDev"]:checked');
+  S.selectedCameraId=sel?.value||null;
+  $('cameraSelectorModal').classList.add('hidden');
+  startVideoBuffer();
+}
+function skipCamera(){$('cameraSelectorModal').classList.add('hidden');}
+
 async function startVideoBuffer(){
   if(VIDEO_BUF.capturing)return;
   try{
-    VIDEO_BUF.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:640},height:{ideal:480}},audio:false});
+    const constraints={
+      video:S.selectedCameraId
+        ?{deviceId:{exact:S.selectedCameraId},width:{ideal:640},height:{ideal:480}}
+        :{facingMode:'environment',width:{ideal:640},height:{ideal:480}},
+      audio:false
+    };
+    VIDEO_BUF.stream=await navigator.mediaDevices.getUserMedia(constraints);
     VIDEO_BUF.video=document.createElement('video');
     VIDEO_BUF.video.srcObject=VIDEO_BUF.stream;
     VIDEO_BUF.video.playsInline=true;
