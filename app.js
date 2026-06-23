@@ -23,6 +23,11 @@ const S={
   urbanBuf:[],urbanBufMax:90,
   urbanEvents:[],
   noiseBaseline:{mean:0,std:0.05,samples:[]},
+  noiseFilter:{
+    eventMask:false,eventMaskTs:0,
+    percentile15:0,appliedPost:false,
+    refBuf:[],refBufMax:600,refSpectrum:null
+  },
   _lastEventTs:null,
   groundTruth:[],
   comfort:{
@@ -379,15 +384,33 @@ function feedUrbanBuffer(x,y,z,t){
   S.urbanBuf.push({t,ax:x,ay:y,az:z,vert});
   if(S.urbanBuf.length>S.urbanBufMax)S.urbanBuf.shift();
   updateNoiseBaseline(vert);
+  updateReferenceSpectrum(vert,S.lastPos?.speed||0);
   detectEvent();
 }
 
 function updateNoiseBaseline(vert){
+  const now=Date.now();
+  if(S.noiseFilter.eventMask&&(now-S.noiseFilter.eventMaskTs)<1000)return;
+  S.noiseFilter.eventMask=false;
   S.noiseBaseline.samples.push(Math.abs(vert));
   if(S.noiseBaseline.samples.length>300)S.noiseBaseline.samples.shift();
   S.noiseBaseline.mean=S.noiseBaseline.samples.reduce((a,b)=>a+b,0)/S.noiseBaseline.samples.length;
   const variance=S.noiseBaseline.samples.reduce((a,b)=>a+(b-S.noiseBaseline.mean)**2,0)/S.noiseBaseline.samples.length;
   S.noiseBaseline.std=Math.sqrt(variance);
+}
+function updateReferenceSpectrum(vert,speedKmh){
+  if(speedKmh<10||speedKmh>90)return;
+  if(S.noiseFilter.eventMask)return;
+  const absVert=Math.abs(vert);
+  const p20Threshold=S.noiseBaseline.mean+0.5*S.noiseBaseline.std;
+  if(absVert>p20Threshold)return;
+  S.noiseFilter.refBuf.push(absVert);
+  if(S.noiseFilter.refBuf.length>S.noiseFilter.refBufMax)S.noiseFilter.refBuf.shift();
+  if(S.noiseFilter.refBuf.length>=S.noiseFilter.refBufMax){
+    const mean=S.noiseFilter.refBuf.reduce((a,b)=>a+b,0)/S.noiseFilter.refBuf.length;
+    const std=Math.sqrt(S.noiseFilter.refBuf.reduce((a,b)=>a+(b-mean)**2,0)/S.noiseFilter.refBuf.length);
+    S.noiseFilter.refSpectrum={mean,std,n:S.noiseFilter.refBuf.length};
+  }
 }
 
 function detectEvent(){
@@ -531,6 +554,7 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
     speed,type,severity,score,features,
     confirmed:false,confirmCount:1
   };
+  S.noiseFilter.eventMask=true;S.noiseFilter.eventMaskTs=Date.now();
   S.urbanEvents.push(event);
   S._lastEventTs=triggerTs;
   S._recentUrbanEvent=true;setTimeout(()=>{S._recentUrbanEvent=false;},500);
@@ -653,7 +677,7 @@ function onVert(raw){
   const iriM=computeIRI(raw),kmh=S.lastPos?.speed||0,iriC=spdCorr(iriM,kmh);
   const now=Date.now();
   if(now-S.lastIRIUpd>65){S.lastIRIUpd=now;const _m=iriM,_c=iriC;queueUI('iri',()=>updateIRI(_m,_c));if(S.active&&!S.paused){queueUI('stats',updateStats);queueUI('comfort',()=>updateComfortUI(S.comfort.avLive));}}
-  if(S.active&&!S.paused){S.iriMA+=iriM;S.iriCA+=iriC;S.iriN++;S.iriMax=Math.max(S.iriMax,iriC);S.iriMin=Math.min(S.iriMin,iriC);S.iriSum+=iriC;S.iriCnt++;if(iriC>5)registerChartMark('#EF4444','iri');}
+  if(S.active&&!S.paused){S.iriMA+=iriM;S.iriCA+=iriC;S.iriN++;S.iriMax=Math.max(S.iriMax,iriC);S.iriMin=Math.min(S.iriMin,iriC);S.iriSum+=iriC;S.iriCnt++;if(iriC>5)registerChartMark('#EF4444','iri');updateReferenceSpectrum(S.hpPrev,kmh);}
   if(now-S.lastChartUpd>82){S.lastChartUpd=now;S.chartZ.push(+Math.abs(S.hpPrev).toFixed(3));S.chartI.push(+iriC.toFixed(3));if(S.chartZ.length>S.chartMax){S.chartZ.shift();S.chartI.shift();}updateCharts();}
 }
 function updateIRI(m,c){
@@ -854,6 +878,7 @@ async function startMeasurement(){
     S.urbanEvents=[];S.urbanBuf=[];S._lastEventTs=null;
     S.groundTruth=[];
     S.noiseBaseline={mean:0,std:0.05,samples:[]};
+    S.noiseFilter={eventMask:false,eventMaskTs:0,percentile15:0,appliedPost:false,refBuf:[],refBufMax:600,refSpectrum:null};
     set('uEventCount','0');set('uGraveCount','0');set('uModCount','0');
     const lEl=$('uLastEvent');if(lEl)lEl.textContent='Sin eventos detectados aún';
     const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='block';
@@ -918,6 +943,7 @@ function stopMeasurement(){
     iriData,urbanData,comfortData
   };
   $('routeNameInput').value='';$('routeNameModal').classList.remove('hidden');
+  updateNoiseFilterUI();
 }
 function collectComfortData(){
   const cf=S.comfort;
@@ -944,6 +970,36 @@ function confirmSave(){
   S.pendingRoute=null;
 }
 function discardRoute(){S.pendingRoute=null;$('routeNameModal').classList.add('hidden');toast('Ruta descartada');}
+function applyPostProcessNoise(){
+  const allAmplitudes=S.urbanEvents.map(e=>e.features?.peakAmp||0);
+  if(allAmplitudes.length<5)return;
+  const sorted=[...allAmplitudes].sort((a,b)=>a-b);
+  const p15idx=Math.floor(sorted.length*0.15);
+  S.noiseFilter.percentile15=sorted[p15idx];
+  const noiseThreshold=S.noiseFilter.percentile15+S.noiseBaseline.std;
+  let discarded=0;
+  S.urbanEvents=S.urbanEvents.filter(e=>{
+    const amp=e.features?.peakAmp||0;
+    if(amp<=noiseThreshold&&e.severity==='leve'&&!e.geminiConfirm){discarded++;return false;}
+    return true;
+  });
+  if(discarded>0){
+    S.noiseFilter.appliedPost=true;
+    toast('🧹 Post-procesado: '+discarded+' evento'+(discarded>1?'s':'')+' de ruido eliminado'+(discarded>1?'s':''));
+    log('[Ruido] Percentil 15='+S.noiseFilter.percentile15.toFixed(3)+' · Umbral='+noiseThreshold.toFixed(3)+' · Descartados='+discarded);
+  }
+}
+function updateNoiseFilterUI(){
+  const row=$('noiseFilterRow'),info=$('noiseFilterInfo');
+  if(!row||!info)return;
+  const hasUrban=S.activeModes.has('urban')&&S.urbanEvents.length>0;
+  row.style.display=hasUrban?'flex':'none';
+  if(hasUrban){
+    info.textContent=S.noiseFilter.appliedPost
+      ?'✅ Ruido de fondo eliminado'
+      :S.urbanEvents.length+' eventos · p15='+S.noiseFilter.percentile15.toFixed(3)+' m/s²';
+  }
+}
 function startTimer(){S.timerStart=Date.now();S.timerRef=setInterval(()=>{if(S.paused)return;const e=Math.floor((Date.now()-S.timerStart)/1000);set('measTimer',String(Math.floor(e/60)).padStart(2,'0')+':'+String(e%60).padStart(2,'0'));},500);}
 function stopTimer(){clearInterval(S.timerRef);S.timerRef=null;}
 function segmentize(pts,sLen){
@@ -1722,6 +1778,7 @@ function stopComfortSession(){
     vdvSession:{z:getVDV('Z'),x:getVDV('X'),y:getVDV('Y')},
     vehicleProfile:cf.vehicleProfile,fsUsed:cf.fsActual,dist:S.dist};
   $('routeNameInput').value='';$('routeNameModal').classList.remove('hidden');
+  updateNoiseFilterUI();
 }
 
 // ─ Garage ─────────────────────────────────────
