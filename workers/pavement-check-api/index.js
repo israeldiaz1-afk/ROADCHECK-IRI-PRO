@@ -76,6 +76,74 @@ export default {
       return new Response(JSON.stringify({ ok: true, stored }), { headers });
     }
 
+    // POST /api/analyze
+    if (url.pathname === '/api/analyze' && request.method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch {
+        return new Response('{"error":"invalid json"}', { status: 400, headers });
+      }
+
+      const { image, features } = body;
+      if (!image || !features) {
+        return new Response('{"error":"image and features required"}', { status: 400, headers });
+      }
+
+      const vibDesc = `Firma de vibración del sensor:
+- Amplitud pico: ${features.peakAmp?.toFixed(2)} m/s²
+- Jerk máximo: ${features.jerkMax?.toFixed(1)} m/s³
+- Duración del evento: ${features.duration?.toFixed(0)} ms
+- Bipolaridad (rebote): ${features.bipolarity?.toFixed(2)} (0=sin rebote, 1=rebote completo)
+- Energía en alta frecuencia: ${features.freqEnergy?.toFixed(2)}
+- Velocidad del vehículo: ${features.speed?.toFixed(1)} km/h`;
+
+      const prompt = `Eres un sistema de análisis de pavimento vial. Se te proporciona una imagen tomada desde la cámara trasera de un vehículo y los datos del sensor acelerómetro registrados en el mismo instante.
+
+${vibDesc}
+
+Analiza la imagen y los datos de vibración conjuntamente y responde ÚNICAMENTE con un objeto JSON con esta estructura exacta (sin texto adicional, sin markdown):
+{
+  "type": "pothole|manhole|speedbump|crack|degraded|none",
+  "severity": "leve|moderado|grave|none",
+  "confidence": 0.0-1.0,
+  "description": "descripción breve en español (máx 80 caracteres)",
+  "discard": true|false
+}
+
+Criterios:
+- "discard": true si la imagen muestra asfalto en buen estado o la firma de vibración corresponde claramente a un frenazo (bipolaridad<0.1 y alta correlación con desaceleración longitudinal)
+- "type": "none" si no se identifica ningún desperfecto
+- "confidence": tu nivel de certeza sobre la clasificación
+- "severity": basada en la imagen visual combinada con la amplitud del sensor`;
+
+      try {
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: image } }] }],
+              generationConfig: { temperature: 0.1, maxOutputTokens: 256 }
+            })
+          }
+        );
+
+        const geminiData = await geminiRes.json();
+        const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+        const clean = rawText.replace(/```json|```/g, '').trim();
+        let result;
+        try { result = JSON.parse(clean); }
+        catch { result = { type: 'unknown', severity: 'leve', confidence: 0.3, description: 'Error de análisis', discard: false }; }
+
+        return new Response(JSON.stringify(result), { headers });
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ type: 'unknown', severity: 'leve', confidence: 0, description: 'Error de conexión', discard: false }),
+          { headers }
+        );
+      }
+    }
+
     return new Response('{"error":"not found"}', { status: 404, headers });
   }
 };

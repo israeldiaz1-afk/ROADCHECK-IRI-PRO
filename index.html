@@ -523,7 +523,10 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
       <div class="mec"><span class="mec-val" id="muMod" style="color:#F97316">0</span><span class="mec-lbl">🟠 Moderados</span></div>
       <div class="mec"><span class="mec-val" id="muGrave" style="color:#EF4444">0</span><span class="mec-lbl">🔴 Graves</span></div>
     </div>
-    <div class="meas-last-event" id="muLastEvent">Sin eventos detectados</div>
+    <div class="meas-last-event-row" style="display:flex;align-items:center;gap:8px;border-top:1px solid var(--ln);padding:6px 10px;min-height:28px">
+      <img id="lastEventThumb" style="display:none;width:72px;height:54px;border-radius:4px;object-fit:cover;border:1px solid rgba(14,165,233,.3);flex-shrink:0" alt="Último evento">
+      <div class="meas-last-event" id="muLastEvent" style="border-top:none;padding:0;min-height:0">Sin eventos detectados</div>
+    </div>
   </div>
   <div class="meas-comfort-badge hidden" id="measComfortBadge">
     <span class="mcb-ico">📳</span>

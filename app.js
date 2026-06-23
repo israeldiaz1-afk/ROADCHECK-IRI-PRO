@@ -459,6 +459,9 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
   S._recentUrbanEvent=true;setTimeout(()=>{S._recentUrbanEvent=false;},500);
   registerChartMark(severity==='grave'?'#EF4444':'#F59E0B','urban');
   onUrbanEventDetected(event);
+  const imageBlob=extractFrameForEvent(event.ts,event.speed);
+  if(imageBlob)analyzeEventWithGemini(event,imageBlob);
+  else console.log('[Gemini] Sin frame disponible para este evento');
 }
 function showIOSPerm(){$('sensorPermModal')?.classList.remove('hidden');}
 function grantIOS(){$('sensorPermModal')?.classList.add('hidden');DeviceMotionEvent.requestPermission().then(s=>{if(s==='granted'){S.sensorOK=true;$('btnIOS')?.classList.add('hidden');tryAccel();startCal();toast('Permiso concedido');}else toast('Permiso denegado');});}
@@ -1823,6 +1826,67 @@ function updateAdaptiveCalUI(){
   const n=S.adaptiveCal.updateCount;
   if(cnt){cnt.style.display=n>0?'inline':'none';if(cntVal)cntVal.textContent=n;}
   if(driftEl){const d=S.adaptiveCal.driftDeg;driftEl.style.display=d>0.5?'inline':'none';driftEl.textContent='Δ'+d.toFixed(1)+'°';}
+}
+
+// ─ Análisis Gemini (Fase 3) ───────────────────
+async function analyzeEventWithGemini(event,imageBlob){
+  if(!imageBlob)return;
+  const base64=await new Promise(resolve=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result.split(',')[1]);
+    reader.readAsDataURL(imageBlob);
+  });
+  const payload={
+    image:base64,
+    features:{
+      peakAmp:event.features?.peakAmp||0,
+      jerkMax:event.features?.jerkMax||0,
+      duration:event.features?.duration||0,
+      bipolarity:event.features?.bipolarity||0,
+      freqEnergy:event.features?.freqEnergy||0,
+      speed:event.speed||0
+    }
+  };
+  try{
+    const res=await fetch(`${WORKER_URL}/api/analyze`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+    const analysis=await res.json();
+    event.gemini=analysis;
+    event.imageBlob=imageBlob;
+    if(analysis.discard){
+      S.urbanEvents=S.urbanEvents.filter(e=>e.id!==event.id);
+      toast('🔍 Falso positivo descartado por análisis de imagen');
+      console.log('[Gemini] Descartado: '+analysis.description);
+    }else{
+      if(analysis.type&&analysis.type!=='unknown')event.type=analysis.type;
+      if(analysis.severity&&analysis.severity!=='none')event.severity=analysis.severity;
+      event.geminiConfidence=analysis.confidence;
+      event.geminiDescription=analysis.description;
+      showEventThumbnail(event,imageBlob);
+      toast('🔍 '+analysis.description+' (conf. '+(analysis.confidence*100).toFixed(0)+'%)');
+      console.log('[Gemini] '+analysis.type+'/'+analysis.severity+' conf='+analysis.confidence+' — '+analysis.description);
+    }
+    queueUI('urban_meas',updateUrbanMeasPanel);
+  }catch(e){
+    console.log('[Gemini] Error: '+e.message);
+  }
+}
+
+function showEventThumbnail(event,blob){
+  const url=URL.createObjectURL(blob);
+  const thumb=$('lastEventThumb');
+  if(thumb){thumb.src=url;thumb.style.display='block';thumb.title=event.geminiDescription||event.type;setTimeout(()=>URL.revokeObjectURL(url),30000);}
+}
+
+function updateUrbanMeasPanel(){
+  const counts=S.urbanEvents.reduce((a,e)=>{a[e.severity]=(a[e.severity]||0)+1;return a;},{});
+  set('muLeve',(counts.leve||0).toString());
+  set('muMod',(counts.moderado||0).toString());
+  set('muGrave',(counts.grave||0).toString());
+  const last=S.urbanEvents[S.urbanEvents.length-1];
+  if(last){const icons={pothole:'🕳️',manhole:'⭕',speedbump:'⛰️',unknown:'❓'};const mu=$('muLastEvent');if(mu)mu.textContent=`${icons[last.type]||'❓'} ${last.type} · ${last.severity} · score ${last.score.toFixed(0)}`;}
 }
 
 // ─ Buffer de vídeo (Fase 2) ───────────────────
