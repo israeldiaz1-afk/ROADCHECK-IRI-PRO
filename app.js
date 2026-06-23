@@ -574,9 +574,17 @@ function endCal(ok,err=''){
   const cd=$('iriCond');if(cd){cd.textContent='Sin movimiento';cd.style.color='var(--dim)';}
   if(S.vibSamples.length>30){
     const wkTmp=buildWkCascade(S.comfort.fsActual||60);
-    const rmsBaseline=Math.sqrt(S.vibSamples.reduce((s,v)=>s+wkTmp(v)*wkTmp(v),0)/S.vibSamples.length);
-    S.comfort.avBaseline=Math.min(rmsBaseline*1.2,0.3);
-    console.log('[Comfort baseline] '+S.comfort.avBaseline.toFixed(4)+' m/s²');
+    const skip=Math.floor(S.vibSamples.length*0.3);
+    let sumSq=0,n=0;
+    S.vibSamples.forEach((v,i)=>{const out=wkTmp(v);if(i>=skip){sumSq+=out*out;n++;}});
+    const rmsBaseline=n>0?Math.sqrt(sumSq/n):0;
+    const avBaseline=Math.sqrt(
+      (1.0*rmsBaseline**2)+
+      (1.96*(rmsBaseline*0.7)**2)+
+      (1.96*(rmsBaseline*0.7)**2)
+    );
+    S.comfort.avBaseline=Math.min(avBaseline*1.1,0.5);
+    console.log('[Comfort baseline] av='+S.comfort.avBaseline.toFixed(4));
   }
   toast('✅ Todo listo — calibración completada · Ruido: '+S.noiseLevel.toFixed(3)+' m/s²');
 }
@@ -1638,7 +1646,7 @@ function computeLiveComfort(){
 // ─ comfort UI (Fase 4) ────────────────────────
 const COMFORT_SCALE=[
   {max:0.05,  level:'none',           label:'Sin vibración perceptible',color:'#3A5F7A'},
-  {max:0.315,level:'no_confortable',  label:'No confortable',         color:'#10B981'},
+  {max:0.315,level:'no_confortable',  label:'Confortable',            color:'#10B981'},
   {max:0.5,  level:'poco',            label:'Un poco incómodo',       color:'#84CC16'},
   {max:0.8,  level:'moderado',        label:'Moderadamente incómodo', color:'#F59E0B'},
   {max:1.25, level:'incomodo',        label:'Incómodo',               color:'#F97316'},
@@ -1751,9 +1759,11 @@ function saveSpeedCfg(){C.vRef=parseInt($('vRefSlider').value);C.vExp=parseFloat
 // ─ Map center button ──────────────────────────
 function centerMapOnMe(which){
   const map=which==='main'?S.mapMain:S.mapMeas;
-  if(!map)return;
-  if(!S.lastPos){toast('Sin posición GPS todavía');return;}
-  map.setView([S.lastPos.lat,S.lastPos.lon],17,{animate:true});
+  if(!map||!S.lastPos){toast('Sin posición GPS todavía');return;}
+  const center=map.getCenter();
+  const dist=geo(center.lat,center.lng,S.lastPos.lat,S.lastPos.lon);
+  const animate=dist<500;
+  map.setView([S.lastPos.lat,S.lastPos.lon],17,{animate});
 }
 
 // ─ Navigation ─────────────────────────────────
@@ -1844,6 +1854,7 @@ function drawEKG(){
       j===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
     });
     ctx.stroke();
+    ctx.save();
     buf.marks.forEach(m=>{
       const bufStart=Math.max(0,buf.totalSamples-buf.max);
       const relIdx=m.absIdx-bufStart;
@@ -1851,8 +1862,8 @@ function drawEKG(){
       const px=labelW+(relIdx/buf.max)*plotW;
       ctx.strokeStyle=m.color;ctx.lineWidth=2*devicePixelRatio;ctx.globalAlpha=.7;
       ctx.beginPath();ctx.moveTo(px,y0+2);ctx.lineTo(px,y0+rowH-2);ctx.stroke();
-      ctx.globalAlpha=1;
     });
+    ctx.restore();
   });
 }
 function stopEKG(){
@@ -1861,7 +1872,10 @@ function stopEKG(){
 }
 function registerChartMark(color,source){
   if(!EKG.buf)return;
-  EKG.buf.marks.push({absIdx:EKG.buf.totalSamples-1,color,source,ts:Date.now()});
+  const now=EKG.buf.totalSamples;
+  const recent=EKG.buf.marks.find(m=>m.source===source&&(now-m.absIdx)<30);
+  if(recent)return;
+  EKG.buf.marks.push({absIdx:now-1,color,source,ts:Date.now()});
   EKG.buf.marks=EKG.buf.marks.filter(m=>EKG.buf.totalSamples-m.absIdx<=EKG.buf.max);
 }
 
@@ -2003,10 +2017,24 @@ async function initCameraSelector(){
     await navigator.mediaDevices.getUserMedia({video:true,audio:false}).then(s=>s.getTracks().forEach(t=>t.stop()));
     const devices=await navigator.mediaDevices.enumerateDevices();
     const videoDevices=devices.filter(d=>d.kind==='videoinput');
-    if(videoDevices.length<=1){S.selectedCameraId=videoDevices[0]?.deviceId||null;startVideoBuffer();return;}
-    showCameraSelector(videoDevices);
+    const externalCams=videoDevices.filter(d=>{
+      const lbl=(d.label||'').toLowerCase();
+      return!lbl.includes('facing')&&!lbl.includes('camera2')&&
+             !lbl.includes('built-in')&&!lbl.includes('back')&&!lbl.includes('front');
+    });
+    if(externalCams.length===0){
+      S.selectedCameraId=null;
+      startVideoBuffer();
+      return;
+    }
+    const opts=[
+      ...externalCams.map(d=>({...d,label:'📷 '+(d.label||'Cámara externa')})),
+      {deviceId:'__builtin__',label:'📱 Cámara del móvil (principal)'}
+    ];
+    showCameraSelector(opts);
   }catch(e){
     console.log('[Cámara] No disponible: '+e.message);
+    startVideoBuffer();
   }
 }
 function showCameraSelector(devices){
@@ -2020,7 +2048,7 @@ function showCameraSelector(devices){
 }
 function confirmCameraSelection(){
   const sel=document.querySelector('input[name="camDev"]:checked');
-  S.selectedCameraId=sel?.value||null;
+  S.selectedCameraId=sel?.value==='__builtin__'?null:sel?.value||null;
   $('cameraSelectorModal').classList.add('hidden');
   startVideoBuffer();
 }
