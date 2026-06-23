@@ -778,6 +778,7 @@ function startMeasurement(){
     S.iriMA=0;S.iriCA=0;S.iriN=0;S.iriMax=0;S.iriMin=Infinity;S.iriSum=0;S.iriCnt=0;
   }
 
+  if(S.activeModes.has('urban')||S.activeModes.has('comfort'))startVideoBuffer();
   $('meas-sc').classList.remove('hidden');
   updateMeasPanel();
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
@@ -793,7 +794,7 @@ function pauseMeasurement(){S.paused=true;$('btnPause').classList.add('hidden');
 function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');toast('▶ Reanudado');}
 function stopMeasurement(){
   S.active=false;S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
-  stopEKG();
+  stopVideoBuffer();stopEKG();
   const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='none';
 
   const modesUsed=[...S.activeModes];
@@ -1822,6 +1823,84 @@ function updateAdaptiveCalUI(){
   const n=S.adaptiveCal.updateCount;
   if(cnt){cnt.style.display=n>0?'inline':'none';if(cntVal)cntVal.textContent=n;}
   if(driftEl){const d=S.adaptiveCal.driftDeg;driftEl.style.display=d>0.5?'inline':'none';driftEl.textContent='Δ'+d.toFixed(1)+'°';}
+}
+
+// ─ Buffer de vídeo (Fase 2) ───────────────────
+const VIDEO_BUF={stream:null,video:null,canvas:null,ctx:null,frames:[],maxAgeMs:3000,capturing:false,captureInterval:null};
+
+async function startVideoBuffer(){
+  if(VIDEO_BUF.capturing)return;
+  try{
+    VIDEO_BUF.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:640},height:{ideal:480}},audio:false});
+    VIDEO_BUF.video=document.createElement('video');
+    VIDEO_BUF.video.srcObject=VIDEO_BUF.stream;
+    VIDEO_BUF.video.playsInline=true;
+    VIDEO_BUF.video.muted=true;
+    await VIDEO_BUF.video.play();
+    VIDEO_BUF.canvas=document.createElement('canvas');
+    VIDEO_BUF.canvas.width=640;VIDEO_BUF.canvas.height=480;
+    VIDEO_BUF.ctx=VIDEO_BUF.canvas.getContext('2d');
+    VIDEO_BUF.captureInterval=setInterval(captureFrame,250);
+    VIDEO_BUF.capturing=true;
+    const btn=$('btnPhoto');if(btn)btn.classList.remove('hidden');
+    console.log('[Cámara] Buffer de vídeo activo');
+  }catch(e){
+    console.log('[Cámara] No disponible: '+e.message);
+  }
+}
+
+function captureFrame(){
+  if(!VIDEO_BUF.ctx||!VIDEO_BUF.video)return;
+  try{
+    VIDEO_BUF.ctx.drawImage(VIDEO_BUF.video,0,0,640,480);
+    VIDEO_BUF.canvas.toBlob(blob=>{
+      if(!blob)return;
+      const ts=Date.now();
+      VIDEO_BUF.frames.push({ts,blob});
+      const cutoff=ts-VIDEO_BUF.maxAgeMs;
+      while(VIDEO_BUF.frames.length>0&&VIDEO_BUF.frames[0].ts<cutoff)VIDEO_BUF.frames.shift();
+    },'image/jpeg',0.75);
+  }catch(e){}
+}
+
+function stopVideoBuffer(){
+  if(VIDEO_BUF.captureInterval)clearInterval(VIDEO_BUF.captureInterval);
+  if(VIDEO_BUF.stream)VIDEO_BUF.stream.getTracks().forEach(t=>t.stop());
+  VIDEO_BUF.capturing=false;VIDEO_BUF.frames=[];VIDEO_BUF.stream=null;VIDEO_BUF.video=null;
+  const btn=$('btnPhoto');if(btn)btn.classList.add('hidden');
+  console.log('[Cámara] Buffer detenido');
+}
+
+function calcFrameDelay(speedKmh){
+  const analysisWindowMs=400;
+  const distCameraToRear=3.5;
+  const speedMs=speedKmh/3.6;
+  const extraDelayMs=speedMs>0?(distCameraToRear/speedMs)*1000:0;
+  return analysisWindowMs+extraDelayMs;
+}
+
+function extractFrameForEvent(eventTs,speedKmh){
+  if(!VIDEO_BUF.frames.length)return null;
+  const delayMs=calcFrameDelay(speedKmh);
+  const targetTs=eventTs-delayMs;
+  let best=VIDEO_BUF.frames[0],bestDiff=Math.abs(VIDEO_BUF.frames[0].ts-targetTs);
+  VIDEO_BUF.frames.forEach(f=>{const diff=Math.abs(f.ts-targetTs);if(diff<bestDiff){best=f;bestDiff=diff;}});
+  return bestDiff<1500?best.blob:null;
+}
+
+function captureManualPhoto(){
+  if(!VIDEO_BUF.capturing){toast('Cámara no disponible');return;}
+  const blob=VIDEO_BUF.frames[VIDEO_BUF.frames.length-1]?.blob;
+  if(!blob){toast('Sin frame disponible');return;}
+  const manualEvent={
+    id:Date.now()+'_manual',ts:Date.now(),
+    lat:S.lastPos?.lat,lon:S.lastPos?.lon,
+    speed:S.lastPos?.speed||0,
+    type:'unknown',severity:'manual',score:0,manual:true,imageBlob:blob
+  };
+  S.urbanEvents.push(manualEvent);
+  if(typeof analyzeEventWithGemini==='function')analyzeEventWithGemini(manualEvent,blob);
+  toast('📷 Foto capturada — analizando…');
 }
 
 // ─ Red colaborativa (Fase 7) ──────────────────
