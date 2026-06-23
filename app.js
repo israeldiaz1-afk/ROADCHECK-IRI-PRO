@@ -846,7 +846,7 @@ function initMeasMap(){
   try{
     S.mapMeas=L.map(el,{zoomControl:false,attributionControl:false});
     L.tileLayer(TILES,TOPT).addTo(S.mapMeas);
-    S.lineMeas=L.polyline([],{color:'#0EA5E9',weight:6}).addTo(S.mapMeas);
+    S.lineMeas=L.polyline([],{color:'#0EA5E9',weight:6,opacity:.95}).addTo(S.mapMeas);
     if(S.lastPos)S.mapMeas.setView([S.lastPos.lat,S.lastPos.lon],17);
     else S.mapMeas.setView([40.4168,-3.7038],16);
     try{S.mapMeas.invalidateSize();}catch(e){}
@@ -1150,7 +1150,7 @@ function initDetailMap(route){
     // Dibujar segmentos coloreados
     (route.segs||[]).forEach(seg=>{
       const coords=(seg.pts||[]).map(p=>[p.lat,p.lon]);if(coords.length<2)return;
-      L.polyline(coords,{color:seg.color||iCol(seg.iriC),weight:7,opacity:.9})
+      L.polyline(coords,{color:seg.color||iCol(seg.iriC),weight:7,opacity:.92})
         .addTo(S.mapDetail)
         .bindTooltip('IRI: '+(seg.iriC||0).toFixed(2)+' · '+(seg.dist||0).toFixed(0)+'m · '+iLbl(seg.iriC),{permanent:false});
     });
@@ -1212,7 +1212,7 @@ function refreshVisor(){
     cr.forEach(route=>{
       (route.segments||[]).forEach(seg=>{
         const coords=(seg.pts||[]).map(p=>[p.lat,p.lon]);if(coords.length<2)return;
-        L.polyline(coords,{color:seg.color||'#888',weight:7,opacity:.88})
+        L.polyline(coords,{color:seg.color||'#888',weight:7,opacity:.90})
           .addTo(S.mapVisor).bindTooltip('a_v: '+(seg.avAvg||0).toFixed(3)+' m/s² · '+seg.level);
         allP.push(...coords);
       });
@@ -1249,7 +1249,7 @@ function refreshVisor(){
   routes.forEach(r=>(r.segs||[]).forEach(seg=>{
     const iri=mode==='iri_m'?seg.iriM:seg.iriC,coords=(seg.pts||[]).map(p=>[p.lat,p.lon]);
     if(coords.length<2)return;
-    L.polyline(coords,{color:iCol(iri),weight:7,opacity:.88}).addTo(S.mapVisor).on('click',()=>{
+    L.polyline(coords,{color:iCol(iri),weight:7,opacity:.90}).addTo(S.mapVisor).on('click',()=>{
       const c=$('segCard');c.classList.remove('hidden');
       c.innerHTML='<h5>Tramo seleccionado</h5><p>IRI Corregido: <strong>'+(seg.iriC||0).toFixed(3)+' m/km</strong></p><p>IRI Medido: <strong>'+(seg.iriM||0).toFixed(3)+' m/km</strong></p><p>Vel. media: <strong>'+(seg.speedAvg||0).toFixed(1)+' km/h</strong></p><p>Distancia: <strong>'+(seg.dist||0).toFixed(0)+' m</strong></p><p>Condición: <strong style="color:'+iCol(seg.iriC||0)+'">'+iLbl(seg.iriC||0)+'</strong></p>';
     });
