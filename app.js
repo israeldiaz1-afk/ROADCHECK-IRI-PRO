@@ -818,7 +818,7 @@ function initMeasMap(){
 }
 
 // ─ Measurement ────────────────────────────────
-function startMeasurement(){
+async function startMeasurement(){
   if(!S.calibrated){
     toast('⚠️ Calibra el sensor antes de medir (pulsa 🎯)');
     const b=$('btnCal');if(b){b.style.borderColor='var(--bad)';setTimeout(()=>b.style.borderColor='',2000);}
@@ -854,7 +854,7 @@ function startMeasurement(){
     S.iriMA=0;S.iriCA=0;S.iriN=0;S.iriMax=0;S.iriMin=Infinity;S.iriSum=0;S.iriCnt=0;
   }
 
-  if(S.activeModes.has('urban')||S.activeModes.has('comfort'))initCameraSelector();
+  if(S.activeModes.has('urban')||S.activeModes.has('comfort'))await initCameraSelector();
   $('meas-sc').classList.remove('hidden');
   updateMeasPanel();
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
@@ -2014,13 +2014,16 @@ const VIDEO_BUF={stream:null,video:null,canvas:null,ctx:null,frames:[],maxAgeMs:
 
 async function initCameraSelector(){
   try{
-    await navigator.mediaDevices.getUserMedia({video:true,audio:false}).then(s=>s.getTracks().forEach(t=>t.stop()));
+    const tmpStream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+    tmpStream.getTracks().forEach(t=>t.stop());
     const devices=await navigator.mediaDevices.enumerateDevices();
     const videoDevices=devices.filter(d=>d.kind==='videoinput');
     const externalCams=videoDevices.filter(d=>{
       const lbl=(d.label||'').toLowerCase();
       return!lbl.includes('facing')&&!lbl.includes('camera2')&&
-             !lbl.includes('built-in')&&!lbl.includes('back')&&!lbl.includes('front');
+             !lbl.includes('built-in')&&!lbl.includes('back')&&!lbl.includes('front')&&
+             !lbl.includes('cámara')&&!lbl.includes('camera 0')&&!lbl.includes('camera 1')&&
+             !lbl.includes('camera 2')&&!lbl.includes('camera 3');
     });
     if(externalCams.length===0){
       S.selectedCameraId=null;
@@ -2028,12 +2031,12 @@ async function initCameraSelector(){
       return;
     }
     const opts=[
-      ...externalCams.map(d=>({...d,label:'📷 '+(d.label||'Cámara externa')})),
-      {deviceId:'__builtin__',label:'📱 Cámara del móvil (principal)'}
+      ...externalCams.map(d=>({deviceId:d.deviceId,label:'🔌 '+(d.label||'Cámara externa')})),
+      {deviceId:'__builtin__',label:'📱 Cámara trasera del móvil'}
     ];
     showCameraSelector(opts);
   }catch(e){
-    console.log('[Cámara] No disponible: '+e.message);
+    log('[Cámara] No disponible: '+e.message);
     startVideoBuffer();
   }
 }
@@ -2048,11 +2051,15 @@ function showCameraSelector(devices){
 }
 function confirmCameraSelection(){
   const sel=document.querySelector('input[name="camDev"]:checked');
-  S.selectedCameraId=sel?.value==='__builtin__'?null:sel?.value||null;
+  const val=sel?.value;
+  S.selectedCameraId=(val&&val!=='__builtin__')?val:null;
   $('cameraSelectorModal').classList.add('hidden');
   startVideoBuffer();
 }
-function skipCamera(){$('cameraSelectorModal').classList.add('hidden');}
+function skipCamera(){
+  S.selectedCameraId=null;
+  $('cameraSelectorModal').classList.add('hidden');
+}
 
 async function startVideoBuffer(){
   if(VIDEO_BUF.capturing)return;

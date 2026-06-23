@@ -439,7 +439,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
       <!-- MAP — clamp height, no inline style needed -->
       <div class="map-wrap">
         <div id="mapMain"></div>
-        <button class="btn-map-center" onclick="centerMapOnMe('main')" title="Centrar en mi posición">⊕</button>
+        <button class="btn-map-center" style="bottom:12px;left:12px;right:auto" onclick="centerMapOnMe('main')" title="Centrar en mi posición">⊕</button>
         <div class="map-hud">
           <div class="map-pill" id="distPill">0 m</div>
           <div class="map-pill spd" id="speedPill">0 km/h</div>
@@ -587,7 +587,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
   </div>
   <div class="m-map">
     <div id="mapMeas"></div>
-    <button class="btn-map-center" onclick="centerMapOnMe('meas')" title="Centrar en mi posición">⊕</button>
+    <button class="btn-map-center" style="bottom:12px;left:12px;right:auto" onclick="centerMapOnMe('meas')" title="Centrar en mi posición">⊕</button>
   </div>
   <div class="m-chart-3axis">
     <div class="chart-hdr">
