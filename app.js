@@ -30,7 +30,7 @@ const S={
     fsActual:60,
     filtersZ:null,filtersX:null,filtersY:null,
     rmsWindowZ:[],rmsWindowX:[],rmsWindowY:[],
-    avLive:0,
+    avLive:0,avBaseline:0,
     sumPow4Z:0,sumPow4X:0,sumPow4Y:0,
     sumSqZ:0,sumSqX:0,sumSqY:0,sumN:0,
     segments:[],pts:[],_currentSegPts:[],
@@ -504,6 +504,12 @@ function endCal(ok,err=''){
   $('calReqNote')?.classList.add('off');
   set('iriM','0.00');set('iriC','0.00');
   const cd=$('iriCond');if(cd){cd.textContent='Sin movimiento';cd.style.color='var(--dim)';}
+  if(S.vibSamples.length>30){
+    const wkTmp=buildWkCascade(S.comfort.fsActual||60);
+    const rmsBaseline=Math.sqrt(S.vibSamples.reduce((s,v)=>s+wkTmp(v)*wkTmp(v),0)/S.vibSamples.length);
+    S.comfort.avBaseline=Math.min(rmsBaseline*1.2,0.3);
+    console.log('[Comfort baseline] '+S.comfort.avBaseline.toFixed(4)+' m/s²');
+  }
   toast('✅ Todo listo — calibración completada · Ruido: '+S.noiseLevel.toFixed(3)+' m/s²');
 }
 function doCalibrate(){startCal();}
@@ -707,7 +713,7 @@ function _mkMap(id,zoom){
 
 function initStaticMaps(){
   S.mapMain=_mkMap('mapMain',6);
-  if(S.mapMain)S.lineMain=L.polyline([],{color:'#0EA5E9',weight:3,opacity:.8}).addTo(S.mapMain);
+  if(S.mapMain)S.lineMain=L.polyline([],{color:'#0EA5E9',weight:6,opacity:.9}).addTo(S.mapMain);
   S.mapVisor=_mkMap('mapVisor',6);
   if(S.mapVisor)L.control.zoom({position:'bottomright'}).addTo(S.mapVisor);
   [300,800,1600].forEach(t=>setTimeout(()=>{[S.mapMain,S.mapVisor].forEach(m=>{try{m&&m.invalidateSize();}catch(e){}});},t));
@@ -722,7 +728,7 @@ function initMeasMap(){
   try{
     S.mapMeas=L.map(el,{zoomControl:false,attributionControl:false});
     L.tileLayer(TILES,TOPT).addTo(S.mapMeas);
-    S.lineMeas=L.polyline([],{color:'#0EA5E9',weight:4}).addTo(S.mapMeas);
+    S.lineMeas=L.polyline([],{color:'#0EA5E9',weight:6}).addTo(S.mapMeas);
     if(S.lastPos)S.mapMeas.setView([S.lastPos.lat,S.lastPos.lon],17);
     else S.mapMeas.setView([40.4168,-3.7038],16);
     try{S.mapMeas.invalidateSize();}catch(e){}
@@ -992,7 +998,7 @@ function initDetailMap(route){
     // Dibujar segmentos coloreados
     (route.segs||[]).forEach(seg=>{
       const coords=(seg.pts||[]).map(p=>[p.lat,p.lon]);if(coords.length<2)return;
-      L.polyline(coords,{color:seg.color||iCol(seg.iriC),weight:5,opacity:.9})
+      L.polyline(coords,{color:seg.color||iCol(seg.iriC),weight:7,opacity:.9})
         .addTo(S.mapDetail)
         .bindTooltip('IRI: '+(seg.iriC||0).toFixed(2)+' · '+(seg.dist||0).toFixed(0)+'m · '+iLbl(seg.iriC),{permanent:false});
     });
@@ -1054,7 +1060,7 @@ function refreshVisor(){
     cr.forEach(route=>{
       (route.segments||[]).forEach(seg=>{
         const coords=(seg.pts||[]).map(p=>[p.lat,p.lon]);if(coords.length<2)return;
-        L.polyline(coords,{color:seg.color||'#888',weight:5,opacity:.88})
+        L.polyline(coords,{color:seg.color||'#888',weight:7,opacity:.88})
           .addTo(S.mapVisor).bindTooltip('a_v: '+(seg.avAvg||0).toFixed(3)+' m/s² · '+seg.level);
         allP.push(...coords);
       });
@@ -1091,7 +1097,7 @@ function refreshVisor(){
   routes.forEach(r=>(r.segs||[]).forEach(seg=>{
     const iri=mode==='iri_m'?seg.iriM:seg.iriC,coords=(seg.pts||[]).map(p=>[p.lat,p.lon]);
     if(coords.length<2)return;
-    L.polyline(coords,{color:iCol(iri),weight:5,opacity:.88}).addTo(S.mapVisor).on('click',()=>{
+    L.polyline(coords,{color:iCol(iri),weight:7,opacity:.88}).addTo(S.mapVisor).on('click',()=>{
       const c=$('segCard');c.classList.remove('hidden');
       c.innerHTML='<h5>Tramo seleccionado</h5><p>IRI Corregido: <strong>'+(seg.iriC||0).toFixed(3)+' m/km</strong></p><p>IRI Medido: <strong>'+(seg.iriM||0).toFixed(3)+' m/km</strong></p><p>Vel. media: <strong>'+(seg.speedAvg||0).toFixed(1)+' km/h</strong></p><p>Distancia: <strong>'+(seg.dist||0).toFixed(0)+' m</strong></p><p>Condición: <strong style="color:'+iCol(seg.iriC||0)+'">'+iLbl(seg.iriC||0)+'</strong></p>';
     });
@@ -1204,7 +1210,7 @@ const PTS=${ptsJ},SEGS=${segsJ},DS=${JSON.stringify(dists.map(d=>+d.toFixed(0)))
 const ic=v=>v<=2.5?'#10B981':v<=5?'#F59E0B':'#EF4444';
 const map=L.map('map',{zoomControl:true,attributionControl:true});
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,subdomains:['a','b','c'],attribution:'© OpenStreetMap'}).addTo(map);
-SEGS.forEach(s=>{if(s.pts.length<2)return;L.polyline(s.pts.map(p=>[p.lat,p.lon]),{color:ic(s.iriC),weight:5,opacity:.9}).addTo(map);});
+SEGS.forEach(s=>{if(s.pts.length<2)return;L.polyline(s.pts.map(p=>[p.lat,p.lon]),{color:ic(s.iriC),weight:7,opacity:.9}).addTo(map);});
 if(PTS.length)map.fitBounds(L.latLngBounds(PTS.map(p=>[p.lat,p.lon])),{padding:[14,14]});
 const hlMk=L.circleMarker([0,0],{radius:9,color:'#fff',weight:2,fillColor:'#F59E0B',fillOpacity:1});
 PTS.forEach((p,i)=>L.circleMarker([p.lat,p.lon],{radius:6,color:'transparent',fillColor:'transparent',fillOpacity:0}).addTo(map).on('click',()=>hl(i)));
@@ -1430,7 +1436,7 @@ function cCol(av){return(SCALE.find(s=>av<=s.max)||SCALE[SCALE.length-1]).color;
 const map=L.map('map',{zoomControl:true,attributionControl:true});
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,subdomains:['a','b','c'],attribution:'© OpenStreetMap'}).addTo(map);
 const allP=[];
-SEGS.forEach(s=>{if(!s.pts||s.pts.length<2)return;const c=s.pts.map(p=>[p.lat,p.lon]);L.polyline(c,{color:s.color||cCol(s.avAvg),weight:5,opacity:.9}).addTo(map).bindTooltip('a_v: '+s.avAvg+' m/s² · '+s.level);allP.push(...c);});
+SEGS.forEach(s=>{if(!s.pts||s.pts.length<2)return;const c=s.pts.map(p=>[p.lat,p.lon]);L.polyline(c,{color:s.color||cCol(s.avAvg),weight:7,opacity:.9}).addTo(map).bindTooltip('a_v: '+s.avAvg+' m/s² · '+s.level);allP.push(...c);});
 if(allP.length)map.fitBounds(L.latLngBounds(allP),{padding:[14,14]});
 new Chart(document.getElementById('c1'),{type:'bar',data:{labels:SEGS.map((_,i)=>i+1),datasets:[{label:'a_v medio (m/s²)',data:SEGS.map(s=>s.avAvg),backgroundColor:SEGS.map(s=>(s.color||cCol(s.avAvg))+'cc'),borderColor:SEGS.map(s=>s.color||cCol(s.avAvg)),borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{min:0,title:{display:true,text:'a_v (m/s²)',color:'#5A7E9C',font:{size:11}},ticks:{color:'#5A7E9C'},grid:{color:'rgba(14,165,233,.07)'}},x:{title:{display:true,text:'Segmento',color:'#3A5F7A',font:{size:11}},ticks:{color:'#3A5F7A'}}}}});
 <\/script></body></html>`;
@@ -1551,13 +1557,15 @@ function accumulateVDV(wZ,wX,wY,timestamp){
 function computeLiveComfort(){
   const cf=S.comfort;
   const awZ=rmsOf(cf.rmsWindowZ),awX=rmsOf(cf.rmsWindowX),awY=rmsOf(cf.rmsWindowY);
-  const av=Math.sqrt((COMFORT_K_FACTORS.kx**2)*awX**2+(COMFORT_K_FACTORS.ky**2)*awY**2+(COMFORT_K_FACTORS.kz**2)*awZ**2);
+  const avRaw=Math.sqrt((COMFORT_K_FACTORS.kx**2)*awX**2+(COMFORT_K_FACTORS.ky**2)*awY**2+(COMFORT_K_FACTORS.kz**2)*awZ**2);
+  const av=Math.max(0,avRaw-(cf.avBaseline||0));
   cf.avLive=av;
   if(av>0.8)registerChartMark('#A855F7','comfort');
   const _av=av;queueUI('comfort',()=>updateComfortUI(_av));
 }
 // ─ comfort UI (Fase 4) ────────────────────────
 const COMFORT_SCALE=[
+  {max:0.05,  level:'none',           label:'Sin vibración perceptible',color:'#3A5F7A'},
   {max:0.315,level:'no_confortable',  label:'No confortable',         color:'#10B981'},
   {max:0.5,  level:'poco',            label:'Un poco incómodo',       color:'#84CC16'},
   {max:0.8,  level:'moderado',        label:'Moderadamente incómodo', color:'#F59E0B'},
@@ -1803,17 +1811,17 @@ function feedAdaptiveCalibration(x,y,z,timestamp){
 function updateAdaptiveCalUI(){
   const st=S.adaptiveCal.status;
   const dot=$('aciDot'),txt=$('aciTxt');
+  const cnt=$('aciCount'),cntVal=$('aciCountVal');
+  const driftEl=$('aciDrift');
   if(!dot||!txt)return;
-  dot.className='aci-dot '+st;
   const colors={idle:'#3A5F7A',sampling:'#0EA5E9',updated:'#10B981',drift_warning:'#F59E0B'};
   dot.style.background=colors[st]||'#3A5F7A';
-  const texts={
-    idle:'Cal. estática',
-    sampling:'Recalibrando…',
-    updated:`Cal. ×${S.adaptiveCal.updateCount}`,
-    drift_warning:`Deriva ${S.adaptiveCal.driftDeg.toFixed(1)}°`
-  };
+  dot.className='acb-dot'+(st==='sampling'?' sampling':'');
+  const texts={idle:'Cal. estática',sampling:'Recalibrando…',updated:'Cal. adaptativa activa',drift_warning:'Deriva detectada — corrigiendo'};
   txt.textContent=texts[st]||'Cal. estática';
+  const n=S.adaptiveCal.updateCount;
+  if(cnt){cnt.style.display=n>0?'inline':'none';if(cntVal)cntVal.textContent=n;}
+  if(driftEl){const d=S.adaptiveCal.driftDeg;driftEl.style.display=d>0.5?'inline':'none';driftEl.textContent='Δ'+d.toFixed(1)+'°';}
 }
 
 // ─ Red colaborativa (Fase 7) ──────────────────
