@@ -7,7 +7,7 @@ let C={...DEF};
 
 const S={
   active:false,paused:false,pts:[],dist:0,segCount:0,
-  lastPos:null,gpsReady:false,watchId:null,
+  lastPos:null,gpsReady:false,watchId:null,gpsHistory:[],selectedCameraId:null,
   iriMA:0,iriCA:0,iriN:0,
   iriMax:0,iriMin:Infinity,iriSum:0,iriCnt:0,
   sensorOK:false,calibrated:false,
@@ -200,6 +200,59 @@ function computeIRI(raw){
 }
 function spdCorr(m,kmh){return(kmh<C.vMin||kmh<=0)?m:m*Math.pow(C.vRef/kmh,C.vExp);}
 
+// ─ GPS Kalman + snapping ──────────────────────
+const GPS_KALMAN={lat:null,lon:null,varLat:1,varLon:1,Q:0.00001,R:0.0001,initialized:false};
+
+function kalmanGPS(rawLat,rawLon,accuracy){
+  const R=Math.max(GPS_KALMAN.R,(accuracy/111320)**2);
+  if(!GPS_KALMAN.initialized){
+    GPS_KALMAN.lat=rawLat;GPS_KALMAN.lon=rawLon;
+    GPS_KALMAN.varLat=R;GPS_KALMAN.varLon=R;
+    GPS_KALMAN.initialized=true;
+    return{lat:rawLat,lon:rawLon};
+  }
+  GPS_KALMAN.varLat+=GPS_KALMAN.Q;GPS_KALMAN.varLon+=GPS_KALMAN.Q;
+  const kLat=GPS_KALMAN.varLat/(GPS_KALMAN.varLat+R);
+  const kLon=GPS_KALMAN.varLon/(GPS_KALMAN.varLon+R);
+  GPS_KALMAN.lat+=kLat*(rawLat-GPS_KALMAN.lat);
+  GPS_KALMAN.lon+=kLon*(rawLon-GPS_KALMAN.lon);
+  GPS_KALMAN.varLat*=(1-kLat);GPS_KALMAN.varLon*=(1-kLon);
+  return{lat:GPS_KALMAN.lat,lon:GPS_KALMAN.lon};
+}
+
+function getBestPosition(){
+  if(!S.gpsHistory.length)return S.lastPos;
+  const recent=S.gpsHistory.slice(-5);
+  let wLat=0,wLon=0,wTotal=0;
+  recent.forEach(p=>{const w=1/Math.max(p.accuracy,1)**2;wLat+=p.lat*w;wLon+=p.lon*w;wTotal+=w;});
+  return{lat:wLat/wTotal,lon:wLon/wTotal};
+}
+
+function projectPointOnSegment(pLat,pLon,aLat,aLon,bLat,bLon){
+  const dLat=bLat-aLat,dLon=bLon-aLon;
+  const t=Math.max(0,Math.min(1,((pLat-aLat)*dLat+(pLon-aLon)*dLon)/(dLat*dLat+dLon*dLon||1)));
+  return{lat:aLat+t*dLat,lon:aLon+t*dLon};
+}
+
+async function snapToRoad(lat,lon){
+  const query=`[out:json][timeout:5];way(around:15,${lat},${lon})["highway"];out geom;`;
+  try{
+    const res=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(query)});
+    const data=await res.json();
+    if(!data.elements?.length)return{lat,lon};
+    let bestLat=lat,bestLon=lon,bestDist=Infinity;
+    data.elements.forEach(way=>{
+      const geom=way.geometry||[];
+      for(let i=0;i<geom.length-1;i++){
+        const proj=projectPointOnSegment(lat,lon,geom[i].lat,geom[i].lon,geom[i+1].lat,geom[i+1].lon);
+        const d=geo(lat,lon,proj.lat,proj.lon);
+        if(d<bestDist){bestDist=d;bestLat=proj.lat;bestLon=proj.lon;}
+      }
+    });
+    return bestDist<15?{lat:bestLat,lon:bestLon,snapped:true,snapDist:bestDist}:{lat,lon};
+  }catch{return{lat,lon};}
+}
+
 // ─ GPS ───────────────────────────────────────
 function startGPS(){
   if(!('geolocation' in navigator)){toast('GPS no disponible');return;}
@@ -211,7 +264,11 @@ function startGPS(){
   );
 }
 function onGPS(pos){
-  const{latitude:lat,longitude:lon,speed:spd,accuracy:acc}=pos.coords;
+  const{latitude:rawLat,longitude:rawLon,speed:spd,accuracy:acc}=pos.coords;
+  const filtered=kalmanGPS(rawLat,rawLon,acc);
+  const lat=filtered.lat,lon=filtered.lon;
+  S.gpsHistory.push({lat,lon,ts:Date.now(),accuracy:acc});
+  if(S.gpsHistory.length>10)S.gpsHistory.shift();
   const kmh=spd!=null?spd*3.6:0;
   const at='±'+acc.toFixed(0)+'m';
   set('gpsPill',at);
@@ -447,10 +504,11 @@ function classifyType(f){
 
 function registerEvent({triggerTs,speed,severity,score,type,features}){
   if(!S.lastPos)return;
+  const pos=getBestPosition()||S.lastPos;
   const event={
     id:triggerTs+'_'+Math.random().toString(36).slice(2,7),
     ts:triggerTs,
-    lat:S.lastPos.lat,lon:S.lastPos.lon,
+    lat:pos.lat,lon:pos.lon,
     speed,type,severity,score,features,
     confirmed:false,confirmCount:1
   };
@@ -459,6 +517,13 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
   S._recentUrbanEvent=true;setTimeout(()=>{S._recentUrbanEvent=false;},500);
   registerChartMark(severity==='grave'?'#EF4444':'#F59E0B','urban');
   onUrbanEventDetected(event);
+  // Snapping asíncrono — no bloquea el registro
+  snapToRoad(pos.lat,pos.lon).then(snapped=>{
+    if(snapped.snapped){
+      event.lat=snapped.lat;event.lon=snapped.lon;event.snapDist=snapped.snapDist;
+      console.log('[GPS] Snapping: '+snapped.snapDist.toFixed(1)+'m → calzada');
+    }
+  });
   const imageBlob=extractFrameForEvent(event.ts,event.speed);
   if(imageBlob)analyzeEventWithGemini(event,imageBlob);
   else console.log('[Gemini] Sin frame disponible para este evento');
