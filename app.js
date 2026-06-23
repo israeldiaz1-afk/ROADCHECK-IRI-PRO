@@ -38,7 +38,7 @@ const S={
     _segStartPow4Z:0,_segDist:0
   },
   mapMain:null,mapMeas:null,mapVisor:null,mapDetail:null,
-  lineMain:null,lineMeas:null,mkMain:null,mkMeas:null,mkDetail:null,
+  lineMeas:null,mkMain:null,mkMeas:null,mkDetail:null,
   _sessionStart:0,
   _recentUrbanEvent:false,
   adaptiveCal:{
@@ -170,6 +170,25 @@ function recalcMainLayout(){
   const available=Math.max(100,totalH-usedH-gaps);
   mapWrap.style.height=available+'px';
   try{S.mapMain?.invalidateSize();}catch(e){}
+  updateBaselineIndicator();
+}
+function updateBaselineIndicator(){
+  const dot=$('biDot'),lbl=$('biLabel'),det=$('biDetail');
+  if(!dot)return;
+  if(!S.calibrated){
+    dot.style.background='#3A5F7A';
+    lbl.textContent='Sensor sin calibrar';
+    det.textContent='Pulsa 🎯 para calibrar antes de iniciar';
+    return;
+  }
+  const noiseOk=S.noiseLevel<=0.15;
+  dot.style.background=noiseOk?'#10B981':'#F59E0B';
+  lbl.textContent=noiseOk?'✅ Ruido de fondo calibrado':'⚠️ Ruido de fondo elevado';
+  const details=[];
+  if(S.activeModes.has('iri'))details.push('IRI: baseline OK');
+  if(S.activeModes.has('urban'))details.push('Urbano: umbral '+(S.noiseBaseline.mean+4*S.noiseBaseline.std).toFixed(3)+' m/s²');
+  if(S.activeModes.has('comfort'))details.push('Confort: a_v baseline '+(S.comfort.avBaseline||0).toFixed(3)+' m/s²');
+  det.textContent=details.join(' · ');
 }
 const capitalize=s=>s.charAt(0).toUpperCase()+s.slice(1);
 
@@ -283,7 +302,6 @@ function onGPS(pos){
   mapMk(S.mapMain,'mkMain',lat,lon);
   mapMk(S.mapMeas,'mkMeas',lat,lon);
   if(kmh>2){
-    S.lineMain?.addLatLng([lat,lon]);
     S.lineMeas?.addLatLng([lat,lon]);
     S.dist+=d;
     const dt=S.dist<1000?S.dist.toFixed(0)+' m':(S.dist/1000).toFixed(2)+' km';
@@ -789,7 +807,6 @@ function _mkMap(id,zoom){
 
 function initStaticMaps(){
   S.mapMain=_mkMap('mapMain',6);
-  if(S.mapMain)S.lineMain=L.polyline([],{color:'#0EA5E9',weight:6,opacity:.9}).addTo(S.mapMain);
   S.mapVisor=_mkMap('mapVisor',6);
   if(S.mapVisor)L.control.zoom({position:'bottomright'}).addTo(S.mapVisor);
   [300,800,1600].forEach(t=>setTimeout(()=>{[S.mapMain,S.mapVisor].forEach(m=>{try{m&&m.invalidateSize();}catch(e){}});},t));
@@ -829,7 +846,7 @@ async function startMeasurement(){
   S.adaptiveCal={active:false,gravBuf:[],gravBufMax:180,lastUpdate:0,updateCount:0,driftDeg:0,driftThresholdDeg:2.0,status:'idle'};
   S.buf=[];S.chartZ=[];S.chartI=[];S.hpPrev=0;S.hpPrevIn=0;
   stopEKG();
-  S.lineMain?.setLatLngs([]);S.lineMeas?.setLatLngs([]);
+  S.lineMeas?.setLatLngs([]);
 
   if(S.activeModes.has('urban')){
     S.urbanEvents=[];S.urbanBuf=[];S._lastEventTs=null;

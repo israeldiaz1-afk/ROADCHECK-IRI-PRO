@@ -366,6 +366,13 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .photo-lightbox img{max-width:100%;max-height:75vh;border-radius:8px;object-fit:contain}
 .lightbox-info{color:var(--txt);font-family:var(--mono);font-size:var(--fs-sm);margin-top:10px;text-align:center}
 .lightbox-close{position:absolute;top:16px;right:16px;background:rgba(255,255,255,.1);border:none;color:#fff;font-size:1.4rem;width:44px;height:44px;border-radius:50%;cursor:pointer}
+/* ── BASELINE INDICATOR ── */
+.baseline-indicator{display:flex;flex-direction:column;gap:4px;padding:8px 12px;background:var(--s2);border-radius:var(--r8);border:1px solid rgba(14,165,233,.12);margin:4px 0}
+.bi-row{display:flex;align-items:center;gap:8px}
+.bi-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:var(--dim);transition:background .4s}
+.bi-label{font-size:var(--fs-sm);color:var(--txt);font-family:var(--mono)}
+.bi-detail{font-size:var(--fs-xs);color:var(--dim);font-family:var(--mono);padding-left:18px}
+
 /* ── MAP CENTER BUTTON ── */
 .btn-map-center{position:absolute;bottom:12px;right:12px;z-index:1000;width:44px;height:44px;background:var(--s1);border:2px solid rgba(14,165,233,.4);border-radius:50%;color:var(--sky);font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:background .15s}
 .btn-map-center:active{background:rgba(14,165,233,.2)}
@@ -400,39 +407,12 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
       </div>
 
       <div id="mainPanelsContainer">
-        <div class="iri-panel" id="iriPanel">
-          <div class="iri-row">
-            <div class="iri-col">
-              <div class="iri-tag">IRI Medido</div>
-              <div class="iri-val" id="iriM">0.00</div>
-              <div class="iri-cond">m / km</div>
-            </div>
-            <div class="iri-col">
-              <div class="iri-tag">IRI Corregido</div>
-              <div class="iri-val" id="iriC">0.00</div>
-              <div class="iri-cond" id="iriCond" style="color:var(--dim)">Sin movimiento</div>
-            </div>
+        <div class="baseline-indicator" id="baselineIndicator">
+          <div class="bi-row">
+            <div class="bi-dot" id="biDot"></div>
+            <span class="bi-label" id="biLabel">Sensor sin calibrar</span>
           </div>
-          <div class="iri-scale"><div class="iri-scale-bg"></div><div class="iri-cur" id="iriCur"></div></div>
-        </div>
-
-        <div class="urban-panel hidden" id="urbanPanel">
-          <div class="urban-stats">
-            <div class="u-stat"><span class="u-val" id="uEventCount">0</span><span class="u-lbl">Eventos</span></div>
-            <div class="u-stat"><span class="u-val" id="uGraveCount" style="color:var(--bad)">0</span><span class="u-lbl">Graves</span></div>
-            <div class="u-stat"><span class="u-val" id="uModCount" style="color:var(--fair)">0</span><span class="u-lbl">Moderados</span></div>
-          </div>
-          <div class="urban-last-event" id="uLastEvent">Sin eventos detectados aún</div>
-        </div>
-
-        <div class="comfort-panel hidden" id="comfortPanel">
-          <div class="comfort-main">
-            <span class="comfort-value" id="comfortAv">0.000</span>
-            <span class="comfort-unit">m/s²</span>
-          </div>
-          <div class="comfort-level" id="comfortLevel">No confortable</div>
-          <div class="comfort-bar"><div class="comfort-bar-fill" id="comfortBarFill"></div></div>
-          <div class="comfort-vdv">VDV sesión: <span id="comfortVdv">0.00</span> m/s<sup>1.75</sup></div>
+          <div class="bi-detail" id="biDetail"></div>
         </div>
       </div>
 
