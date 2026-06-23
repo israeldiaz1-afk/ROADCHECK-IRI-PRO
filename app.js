@@ -1564,7 +1564,8 @@ function computeLiveComfort(){
   const cf=S.comfort;
   const awZ=rmsOf(cf.rmsWindowZ),awX=rmsOf(cf.rmsWindowX),awY=rmsOf(cf.rmsWindowY);
   const avRaw=Math.sqrt((COMFORT_K_FACTORS.kx**2)*awX**2+(COMFORT_K_FACTORS.ky**2)*awY**2+(COMFORT_K_FACTORS.kz**2)*awZ**2);
-  const av=Math.max(0,avRaw-(cf.avBaseline||0));
+  const avRaw2=Math.max(0,avRaw-(cf.avBaseline||0));
+  const av=avRaw2<0.05?0:avRaw2;
   cf.avLive=av;
   if(av>0.8)registerChartMark('#A855F7','comfort');
   const _av=av;queueUI('comfort',()=>updateComfortUI(_av));
@@ -1596,6 +1597,15 @@ function updateComfortUI(av){
     badge.classList.toggle('hidden',!S.active||!isComboMode);
     const mcbVal=$('mcbVal');
     if(mcbVal){mcbVal.textContent=cls.label;mcbVal.style.color=cls.color;}
+  }
+  // Panel solo-confort en medición
+  const soloPanel=$('measComfortSolo');
+  if(soloPanel){
+    const soloOnly=S.activeModes.has('comfort')&&!S.activeModes.has('iri')&&!S.activeModes.has('urban');
+    soloPanel.classList.toggle('hidden',!S.active||!soloOnly);
+    set('mcsAv',av.toFixed(3));
+    const mcsLvl=$('mcsLevel');
+    if(mcsLvl){mcsLvl.textContent=cls.label;mcsLvl.style.color=cls.color;}
   }
 }
 function getVDV(axis){return Math.pow(Math.max(0,S.comfort['sumPow4'+axis]),0.25);}
@@ -1709,7 +1719,7 @@ window.addEventListener('load',()=>{
 // ─ EKG 3 canales Canvas 2D (Fase 4 v2) ───────────
 const EKG={
   canvas:null,ctx:null,W:0,H:0,
-  buf:{z:[],x:[],y:[],marks:[],max:120},
+  buf:{z:[],x:[],y:[],marks:[],max:120,totalSamples:0},
   COLORS:{z:'#0EA5E9',x:'#EF4444',y:'#10B981'},
   LABELS:{z:'Z',x:'X',y:'Y'},
   animId:null
@@ -1729,6 +1739,7 @@ function initEKG(canvasId){
 }
 function feedRawAxisChart(x,y,z){
   EKG.buf.z.push(z);EKG.buf.x.push(x);EKG.buf.y.push(y);
+  EKG.buf.totalSamples++;
   if(EKG.buf.z.length>EKG.buf.max){EKG.buf.z.shift();EKG.buf.x.shift();EKG.buf.y.shift();}
   if(!EKG.animId)EKG.animId=requestAnimationFrame(drawEKG);
 }
@@ -1761,8 +1772,10 @@ function drawEKG(){
     });
     ctx.stroke();
     buf.marks.forEach(m=>{
-      if(m.idx<0||m.idx>=buf.max)return;
-      const px=labelW+(m.idx/buf.max)*plotW;
+      const bufStart=Math.max(0,buf.totalSamples-buf.max);
+      const relIdx=m.absIdx-bufStart;
+      if(relIdx<0||relIdx>=buf.max)return;
+      const px=labelW+(relIdx/buf.max)*plotW;
       ctx.strokeStyle=m.color;ctx.lineWidth=2*devicePixelRatio;ctx.globalAlpha=.7;
       ctx.beginPath();ctx.moveTo(px,y0+2);ctx.lineTo(px,y0+rowH-2);ctx.stroke();
       ctx.globalAlpha=1;
@@ -1771,12 +1784,12 @@ function drawEKG(){
 }
 function stopEKG(){
   if(EKG.animId){cancelAnimationFrame(EKG.animId);EKG.animId=null;}
-  EKG.buf.z=[];EKG.buf.x=[];EKG.buf.y=[];EKG.buf.marks=[];
+  EKG.buf.z=[];EKG.buf.x=[];EKG.buf.y=[];EKG.buf.marks=[];EKG.buf.totalSamples=0;
 }
 function registerChartMark(color,source){
   if(!EKG.buf)return;
-  EKG.buf.marks.push({idx:EKG.buf.z.length-1,color});
-  if(EKG.buf.marks.length>20)EKG.buf.marks.shift();
+  EKG.buf.marks.push({absIdx:EKG.buf.totalSamples-1,color,source,ts:Date.now()});
+  EKG.buf.marks=EKG.buf.marks.filter(m=>EKG.buf.totalSamples-m.absIdx<=EKG.buf.max);
 }
 
 // ─ Calibración adaptativa (Fase 5) ────────────
