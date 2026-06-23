@@ -358,6 +358,9 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .urban-label-btn{position:fixed;bottom:calc(var(--tab-h)+var(--safe-b)+14px);right:14px;z-index:2900;padding:10px 14px;border-radius:var(--r8);border:1px solid var(--ln2);background:var(--s1);color:var(--txt);font-family:var(--mono);font-size:.6rem;font-weight:700;cursor:pointer;box-shadow:0 3px 14px rgba(0,0,0,.5);display:none}
 .hidden{display:none!important}
 .tag{font-size:.5rem;background:var(--s2);padding:2px 6px;border-radius:3px;color:var(--dim);font-family:var(--mono)}
+/* ── MAP CENTER BUTTON ── */
+.btn-map-center{position:absolute;bottom:12px;right:12px;z-index:1000;width:44px;height:44px;background:var(--s1);border:2px solid rgba(14,165,233,.4);border-radius:50%;color:var(--sky);font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:background .15s}
+.btn-map-center:active{background:rgba(14,165,233,.2)}
 </style>
 </head>
 <body>
@@ -428,6 +431,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
       <!-- MAP — clamp height, no inline style needed -->
       <div class="map-wrap">
         <div id="mapMain"></div>
+        <button class="btn-map-center" onclick="centerMapOnMe('main')" title="Centrar en mi posición">⊕</button>
         <div class="map-hud">
           <div class="map-pill" id="distPill">0 m</div>
           <div class="map-pill spd" id="speedPill">0 km/h</div>
@@ -552,7 +556,10 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
       <span class="acb-drift" id="aciDrift" style="display:none"></span>
     </div>
   </div>
-  <div class="m-map"><div id="mapMeas"></div></div>
+  <div class="m-map">
+    <div id="mapMeas"></div>
+    <button class="btn-map-center" onclick="centerMapOnMe('meas')" title="Centrar en mi posición">⊕</button>
+  </div>
   <div class="m-chart-3axis">
     <div class="chart-hdr">
       <span class="chart-lbl">Acelerómetro EKG (±12 m/s²)</span>

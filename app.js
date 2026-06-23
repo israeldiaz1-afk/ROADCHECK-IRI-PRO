@@ -1683,6 +1683,14 @@ function openSpeedModal(){$('vRefSlider').value=C.vRef;set('vRefLbl',C.vRef);$('
 function closeSpeedModal(){$('speedModal').classList.add('hidden');}
 function saveSpeedCfg(){C.vRef=parseInt($('vRefSlider').value);C.vExp=parseFloat($('vExpSlider').value);C.vMin=parseInt($('vMinSlider').value);saveCfg();closeSpeedModal();set('vrefVal',C.vRef+' km/h');toast('v_ref='+C.vRef+' km/h n='+C.vExp.toFixed(2));}
 
+// ─ Map center button ──────────────────────────
+function centerMapOnMe(which){
+  const map=which==='main'?S.mapMain:S.mapMeas;
+  if(!map)return;
+  if(!S.lastPos){toast('Sin posición GPS todavía');return;}
+  map.setView([S.lastPos.lat,S.lastPos.lon],17,{animate:true});
+}
+
 // ─ Navigation ─────────────────────────────────
 function switchTab(tab){
   ['main','history','visor'].forEach(t=>{
