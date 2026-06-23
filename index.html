@@ -307,10 +307,13 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .mcs-level{font-size:var(--fs-sm);font-weight:700;margin-top:4px}
 
 /* ── ADAPTIVE CAL BAR ── */
-.adapt-cal-bar{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;background:var(--s2);border-top:1px solid rgba(14,165,233,.12);font-family:var(--mono);font-size:var(--fs-xs);flex-shrink:0}
+.adapt-cal-row{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.adapt-cal-bar{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;background:var(--s2);border-top:1px solid rgba(14,165,233,.12);font-family:var(--mono);font-size:var(--fs-xs);flex:1}
 .acb-left{display:flex;align-items:center;gap:7px}
 .acb-right{display:flex;align-items:center;gap:10px;color:var(--dim)}
 .acb-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:#3A5F7A;transition:background .4s}
+.btn-recal{width:36px;height:36px;border-radius:50%;background:var(--s2);border:1px solid rgba(14,165,233,.25);color:var(--sky);font-size:1rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.btn-recal:active{background:rgba(14,165,233,.15)}
 .acb-dot.sampling{animation:pulse 1.2s ease-in-out infinite}
 .acb-status{color:var(--txt)}
 .acb-count{color:var(--good);font-weight:700}
@@ -555,15 +558,18 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
     <div class="mcs-unit">m/s² · a<sub>v</sub></div>
     <div class="mcs-level" id="mcsLevel">Sin vibración perceptible</div>
   </div>
-  <div class="adapt-cal-bar" id="adaptCalBar">
-    <div class="acb-left">
-      <div class="acb-dot" id="aciDot"></div>
-      <span class="acb-status" id="aciTxt">Cal. estática</span>
+  <div class="adapt-cal-row">
+    <div class="adapt-cal-bar" id="adaptCalBar">
+      <div class="acb-left">
+        <div class="acb-dot" id="aciDot"></div>
+        <span class="acb-status" id="aciTxt">Cal. estática</span>
+      </div>
+      <div class="acb-right">
+        <span class="acb-count hidden" id="aciCount">🔄 <span id="aciCountVal">0</span> recal.</span>
+        <span class="acb-drift hidden" id="aciDrift"></span>
+      </div>
     </div>
-    <div class="acb-right">
-      <span class="acb-count" id="aciCount" style="display:none">🔄 <span id="aciCountVal">0</span> recal.</span>
-      <span class="acb-drift" id="aciDrift" style="display:none"></span>
-    </div>
+    <button class="btn-recal" id="btnManualRecal" onclick="requestManualRecal()" title="Recalibrar ahora (usa cuando estés parado en semáforo)">🎯</button>
   </div>
   <div class="m-map">
     <div id="mapMeas"></div>

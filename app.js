@@ -41,10 +41,11 @@ const S={
   lineMeas:null,mkMain:null,mkMeas:null,mkDetail:null,
   _sessionStart:0,
   _recentUrbanEvent:false,
+  _manualRecalRequest:false,
   adaptiveCal:{
     active:false,gravBuf:[],gravBufMax:180,
     lastUpdate:0,updateCount:0,driftDeg:0,
-    driftThresholdDeg:2.0,status:'idle'
+    driftThresholdDeg:2.0,status:'idle',_stopStart:null
   }
 };
 
@@ -843,7 +844,8 @@ async function startMeasurement(){
   }
   if(S.activeModes.has('iri')&&!S.vehicleId){toast('⚠️ Selecciona un vehículo para el modo Carretera');openGarage();return;}
   S.active=true;S.paused=false;S.dist=0;S._sessionStart=Date.now();S._recentUrbanEvent=false;
-  S.adaptiveCal={active:false,gravBuf:[],gravBufMax:180,lastUpdate:0,updateCount:0,driftDeg:0,driftThresholdDeg:2.0,status:'idle'};
+  S.adaptiveCal={active:false,gravBuf:[],gravBufMax:180,lastUpdate:0,updateCount:0,driftDeg:0,driftThresholdDeg:2.0,status:'idle',_stopStart:null};
+  S._manualRecalRequest=false;
   S.buf=[];S.chartZ=[];S.chartI=[];S.hpPrev=0;S.hpPrevIn=0;
   stopEKG();
   S.lineMeas?.setLatLngs([]);
@@ -1896,19 +1898,27 @@ function registerChartMark(color,source){
   EKG.buf.marks=EKG.buf.marks.filter(m=>EKG.buf.totalSamples-m.absIdx<=EKG.buf.max);
 }
 
-// ─ Calibración adaptativa (Fase 5) ────────────
+// ─ Calibración adaptativa A3 ──────────────────
 function feedAdaptiveCalibration(x,y,z,timestamp){
-  if(!S.active||!S.calibrated||!S.grav)return;
-  const speed=S.lastPos?.speed||0,g=S.grav;
-  const vertCal=x*g.x+y*g.y+z*g.z;
-  const latCal=Math.abs(x*g.y-y*g.x);
-  const prevVert=S.adaptiveCal.gravBuf[S.adaptiveCal.gravBuf.length-1]?.vert||vertCal;
-  const jerk=Math.abs(vertCal-prevVert)*60;
-  const calm=speed>15&&speed<90&&latCal<0.3&&jerk<0.8
-    &&!S._recentUrbanEvent&&(timestamp-S._sessionStart)>10000;
-  if(!calm){S.adaptiveCal.status='idle';return;}
+  if(!S.calibrated||!S.grav)return;
+  const speed=S.lastPos?.speed||0;
+  const stopped=speed<2;
+  if(stopped){
+    S.adaptiveCal._stopStart=S.adaptiveCal._stopStart||timestamp;
+    const stopDuration=timestamp-S.adaptiveCal._stopStart;
+    if(stopDuration<4000)return;
+  } else {
+    S.adaptiveCal._stopStart=null;
+    if(!S._manualRecalRequest){
+      S.adaptiveCal.status='idle';
+      queueUI('adaptiveCal',updateAdaptiveCalUI);
+      return;
+    }
+  }
+  if(S._manualRecalRequest)S._manualRecalRequest=false;
   S.adaptiveCal.status='sampling';
-  S.adaptiveCal.gravBuf.push({x,y,z,vert:vertCal});
+  queueUI('adaptiveCal',updateAdaptiveCalUI);
+  S.adaptiveCal.gravBuf.push({x,y,z});
   if(S.adaptiveCal.gravBuf.length>S.adaptiveCal.gravBufMax)S.adaptiveCal.gravBuf.shift();
   if(S.adaptiveCal.gravBuf.length<S.adaptiveCal.gravBufMax)return;
   let mx=0,my=0,mz=0;
@@ -1918,18 +1928,29 @@ function feedAdaptiveCalibration(x,y,z,timestamp){
   const mag=Math.sqrt(mx*mx+my*my+mz*mz);
   if(mag<0.5)return;
   const newGrav={x:mx/mag,y:my/mag,z:mz/mag};
-  const dot=newGrav.x*g.x+newGrav.y*g.y+newGrav.z*g.z;
-  const driftDeg=Math.acos(Math.min(1,Math.abs(dot)))*180/Math.PI;
+  const g=S.grav;
+  const dot=Math.min(1,Math.abs(newGrav.x*g.x+newGrav.y*g.y+newGrav.z*g.z));
+  const driftDeg=Math.acos(dot)*180/Math.PI;
   S.adaptiveCal.driftDeg=driftDeg;
   S.adaptiveCal.lastUpdate=timestamp;
   S.adaptiveCal.updateCount++;
   S.adaptiveCal.gravBuf=[];
-  if(driftDeg>S.adaptiveCal.driftThresholdDeg){
-    S.grav=newGrav;S.gravMag=mag;
-    S.adaptiveCal.status='updated';
-  } else {
-    S.adaptiveCal.status='idle';
+  S.adaptiveCal._stopStart=null;
+  S.grav=newGrav;S.gravMag=mag;
+  S.adaptiveCal.status='updated';
+  if(S.comfort?.avBaseline!==undefined){
+    S.comfort.avBaseline=Math.max(0,S.comfort.avLive||0)*0.5;
   }
+  log('[CalAdaptiva] Recalibrado en parada · deriva='+driftDeg.toFixed(2)+'° · ×'+S.adaptiveCal.updateCount);
+  queueUI('adaptiveCal',updateAdaptiveCalUI);
+}
+function requestManualRecal(){
+  if(!S.calibrated){toast('Calibra el sensor primero');return;}
+  S._manualRecalRequest=true;
+  S.adaptiveCal.gravBuf=[];
+  S.adaptiveCal.status='sampling';
+  queueUI('adaptiveCal',updateAdaptiveCalUI);
+  toast('🎯 Recalibrando… mantén el móvil quieto 3s');
 }
 function updateAdaptiveCalUI(){
   const st=S.adaptiveCal.status;
@@ -1943,8 +1964,8 @@ function updateAdaptiveCalUI(){
   const texts={idle:'Cal. estática',sampling:'Recalibrando…',updated:'Cal. adaptativa activa',drift_warning:'Deriva detectada — corrigiendo'};
   txt.textContent=texts[st]||'Cal. estática';
   const n=S.adaptiveCal.updateCount;
-  if(cnt){cnt.style.display=n>0?'inline':'none';if(cntVal)cntVal.textContent=n;}
-  if(driftEl){const d=S.adaptiveCal.driftDeg;driftEl.style.display=d>0.5?'inline':'none';driftEl.textContent='Δ'+d.toFixed(1)+'°';}
+  if(cnt){cnt.classList.toggle('hidden',n===0);if(cntVal)cntVal.textContent=n;}
+  if(driftEl){const d=S.adaptiveCal.driftDeg;driftEl.classList.toggle('hidden',d<=0.5);driftEl.textContent='Δ'+d.toFixed(1)+'°';}
 }
 
 // ─ Análisis Gemini (Fase 3) ───────────────────
