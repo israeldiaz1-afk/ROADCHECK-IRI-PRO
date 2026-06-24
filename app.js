@@ -179,6 +179,7 @@ function recalcMainLayout(){
   updateBaselineIndicator();
 }
 function updateBaselineIndicator(){
+  toast('[baseline inicio]');
   const dot=$('biDot'),lbl=$('biLabel'),det=$('biDetail');
   toast('[B] dot='+!!$('biDot')+' cal='+S.calibrated);
   if(!dot)return;
@@ -608,6 +609,7 @@ function doCalSample(x,y,z){
   }
 }
 function endCal(ok,err=''){
+  toast('[endCal inicio] ok='+ok);
   S.calPhase=0;$('calPanel')?.classList.add('hidden');
   if(!ok){recalcMainLayout();set('calLbl','Calibrar');$('calIco').textContent='🎯';set('calVal','Pulsa para calibrar');toast('⚠️ Calibración fallida: '+err);return;}
   if(S.vibSamples.length>0){S.noiseLevel=Math.max(DEF.noiseFloor,rmsA(S.vibSamples)*1.5);C.noiseFloor=S.noiseLevel;saveCfg();}
