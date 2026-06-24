@@ -296,7 +296,6 @@ function onGPS(pos){
   if(S.gpsHistory.length>10)S.gpsHistory.shift();
   const kmh=spd!=null?spd*3.6:0;
   const at='±'+acc.toFixed(0)+'m';
-  set('gpsPill',at);
   setChip('cGPS','dGPS','lGPS',acc<=20?'ok':'warn',acc<=20?'#10B981':'#F59E0B','GPS '+at);
   if(!S.gpsReady){
     S.gpsReady=true;
@@ -334,8 +333,13 @@ function setChip(ci,di,li,cls,col,lbl){const e=$(ci);if(!e)return;e.className='c
 function mapCenter(map,lat,lon,z){if(!map)return;map.setView([lat,lon],z);setTimeout(()=>{try{map.invalidateSize();}catch(e){}},120);}
 function mapMk(map,key,lat,lon){
   if(!map)return;
-  if(!S[key])S[key]=L.circleMarker([lat,lon],{radius:7,color:'#fff',weight:2,fillColor:'#0EA5E9',fillOpacity:1}).addTo(map);
-  else S[key].setLatLng([lat,lon]);
+  if(S[key]){
+    const prev=S[key].getLatLng();
+    if(geo(prev.lat,prev.lng,lat,lon)<8)return;
+    S[key].setLatLng([lat,lon]);
+  } else {
+    S[key]=L.circleMarker([lat,lon],{radius:7,color:'#fff',weight:2,fillColor:'#0EA5E9',fillOpacity:1}).addTo(map);
+  }
   map.panTo([lat,lon]);
 }
 
@@ -604,8 +608,8 @@ function doCalSample(x,y,z){
   }
 }
 function endCal(ok,err=''){
-  S.calPhase=0;$('calPanel')?.classList.add('hidden');recalcMainLayout();
-  if(!ok){set('calLbl','Calibrar');$('calIco').textContent='🎯';set('calVal','Pulsa para calibrar');toast('⚠️ Calibración fallida: '+err);return;}
+  S.calPhase=0;$('calPanel')?.classList.add('hidden');
+  if(!ok){recalcMainLayout();set('calLbl','Calibrar');$('calIco').textContent='🎯';set('calVal','Pulsa para calibrar');toast('⚠️ Calibración fallida: '+err);return;}
   if(S.vibSamples.length>0){S.noiseLevel=Math.max(DEF.noiseFloor,rmsA(S.vibSamples)*1.5);C.noiseFloor=S.noiseLevel;saveCfg();}
   S.calibrated=true;S.hpPrev=0;S.hpPrevIn=0;S.buf=[];
   setChip('cSEN','dSEN','lSEN','ok','#10B981','SEN CAL');
@@ -627,8 +631,10 @@ function endCal(ok,err=''){
       (1.96*(rmsBaseline*0.7)**2)
     );
     S.comfort.avBaseline=Math.min(avBaseline*1.1,0.5);
-    console.log('[Comfort baseline] av='+S.comfort.avBaseline.toFixed(4));
+    log('[Comfort baseline] av='+S.comfort.avBaseline.toFixed(4));
   }
+  recalcMainLayout();
+  updateBaselineIndicator();
   toast('✅ Todo listo — calibración completada · Ruido: '+S.noiseLevel.toFixed(3)+' m/s²');
 }
 function doCalibrate(){startCal();}
@@ -1949,10 +1955,10 @@ function stopEKG(){
 function registerChartMark(color,source){
   if(!EKG.buf)return;
   const now=EKG.buf.totalSamples;
-  const recent=EKG.buf.marks.find(m=>m.source===source&&(now-m.absIdx)<30);
-  if(recent)return;
+  const lastMark=EKG.buf.marks[EKG.buf.marks.length-1];
+  if(lastMark&&(now-lastMark.absIdx)<45)return;
   EKG.buf.marks.push({absIdx:now-1,color,source,ts:Date.now()});
-  EKG.buf.marks=EKG.buf.marks.filter(m=>EKG.buf.totalSamples-m.absIdx<=EKG.buf.max);
+  EKG.buf.marks=EKG.buf.marks.filter(m=>(now-m.absIdx)<=EKG.buf.max);
 }
 
 // ─ Calibración adaptativa A3 ──────────────────
@@ -2120,6 +2126,7 @@ async function initCameraSelector(){
              !lbl.includes('cámara')&&!lbl.includes('camera 0')&&!lbl.includes('camera 1')&&
              !lbl.includes('camera 2')&&!lbl.includes('camera 3');
     });
+    log('[CAM] total='+videoDevices.length+' external='+externalCams.length+' | '+videoDevices.map(d=>'"'+d.label+'"').join(' | '));
     if(externalCams.length===0){
       S.selectedCameraId=null;
       startVideoBuffer();
