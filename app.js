@@ -634,6 +634,7 @@ function endCal(ok,err=''){
   }
   recalcMainLayout();
   updateBaselineIndicator();
+  setTimeout(updateBaselineIndicator,300);
   toast('✅ Todo listo — calibración completada · Ruido: '+S.noiseLevel.toFixed(3)+' m/s²');
 }
 function doCalibrate(){startCal();}
@@ -903,7 +904,9 @@ async function startMeasurement(){
     S.iriMA=0;S.iriCA=0;S.iriN=0;S.iriMax=0;S.iriMin=Infinity;S.iriSum=0;S.iriCnt=0;
   }
 
-  if(S.activeModes.has('urban')||S.activeModes.has('comfort'))await initCameraSelector();
+  if(S.activeModes.has('urban')||S.activeModes.has('comfort')){
+    initCameraSelector().catch(e=>log('[Cámara] Error en inicio: '+e.message));
+  }
   $('meas-sc').classList.remove('hidden');
   updateMeasPanel();
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
@@ -2074,18 +2077,27 @@ const VIDEO_BUF={stream:null,video:null,canvas:null,ctx:null,frames:[],maxAgeMs:
 
 async function initCameraSelector(){
   try{
-    const tmpStream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
-    tmpStream.getTracks().forEach(t=>t.stop());
-    const devices=await navigator.mediaDevices.enumerateDevices();
-    const videoDevices=devices.filter(d=>d.kind==='videoinput');
+    let devices=await navigator.mediaDevices.enumerateDevices();
+    let videoDevices=devices.filter(d=>d.kind==='videoinput');
+    if(videoDevices.every(d=>!d.label)){
+      const tmp=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
+      tmp.getTracks().forEach(t=>t.stop());
+      devices=await navigator.mediaDevices.enumerateDevices();
+      videoDevices=devices.filter(d=>d.kind==='videoinput');
+    }
     const externalCams=videoDevices.filter(d=>{
       const lbl=(d.label||'').toLowerCase();
       return!lbl.includes('facing')&&!lbl.includes('camera2')&&
              !lbl.includes('built-in')&&!lbl.includes('back')&&!lbl.includes('front')&&
-             !lbl.includes('cámara')&&!lbl.includes('camera 0')&&!lbl.includes('camera 1')&&
-             !lbl.includes('camera 2')&&!lbl.includes('camera 3');
+             !lbl.includes('cámara')&&!lbl.match(/camera\s*\d/);
     });
-    log('[CAM] total='+videoDevices.length+' external='+externalCams.length+' | '+videoDevices.map(d=>'"'+d.label+'"').join(' | '));
+    log('[CAM] total='+videoDevices.length+' external='+externalCams.length);
+    S._lastExternalCams=externalCams;
+    const camChip=$('cCAM');
+    if(camChip){
+      camChip.classList.toggle('hidden',externalCams.length===0);
+      if(externalCams.length>0)$('dCAM').style.background='#10B981';
+    }
     if(externalCams.length===0){
       S.selectedCameraId=null;
       startVideoBuffer();
@@ -2097,9 +2109,16 @@ async function initCameraSelector(){
     ];
     showCameraSelector(opts);
   }catch(e){
-    log('[Cámara] No disponible: '+e.message);
-    startVideoBuffer();
+    log('[Cámara] initCameraSelector error: '+e.message);
+    S.selectedCameraId=null;
   }
+}
+function openCameraSelector(){
+  if(!S._lastExternalCams?.length)return;
+  showCameraSelector([
+    ...S._lastExternalCams.map(d=>({deviceId:d.deviceId,label:'🔌 '+(d.label||'Cámara externa')})),
+    {deviceId:'__builtin__',label:'📱 Cámara trasera'}
+  ]);
 }
 function showCameraSelector(devices){
   $('cameraSelectorModal').classList.remove('hidden');
