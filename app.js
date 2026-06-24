@@ -180,7 +180,7 @@ function recalcMainLayout(){
 }
 function updateBaselineIndicator(){
   const dot=$('biDot'),lbl=$('biLabel'),det=$('biDetail');
-  console.log('[baseline] dot='+!!dot+' calibrated='+S.calibrated+' biDot en DOM='+!!document.getElementById('biDot'));
+  toast('[B] dot='+!!$('biDot')+' cal='+S.calibrated);
   if(!dot)return;
   if(!S.calibrated){
     dot.style.background='#3A5F7A';
@@ -636,6 +636,7 @@ function endCal(ok,err=''){
   recalcMainLayout();
   updateBaselineIndicator();
   setTimeout(updateBaselineIndicator,300);
+  setTimeout(()=>toast('[endCal] cal='+S.calibrated+' dot='+!!$('biDot')),350);
   toast('✅ Todo listo — calibración completada · Ruido: '+S.noiseLevel.toFixed(3)+' m/s²');
 }
 function doCalibrate(){startCal();}
