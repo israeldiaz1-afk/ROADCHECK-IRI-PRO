@@ -379,6 +379,28 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 /* ── MAP CENTER BUTTON ── */
 .btn-map-center{position:absolute;bottom:12px;right:12px;z-index:1000;width:44px;height:44px;background:var(--s1);border:2px solid rgba(14,165,233,.4);border-radius:50%;color:var(--sky);font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:background .15s}
 .btn-map-center:active{background:rgba(14,165,233,.2)}
+
+/* ── ACCEL VIZ JOYSTICK + Z-BAR ── */
+.accel-viz{display:flex;gap:10px;padding:6px 10px;background:var(--s2);border-radius:var(--r8);flex:1;min-height:0;align-items:stretch;}
+.av-joystick{display:flex;flex-direction:column;align-items:center;flex:1;gap:3px;}
+.av-label{font-size:.52rem;color:var(--dim);font-family:var(--mono);letter-spacing:.5px;}
+.av-circle{position:relative;flex:1;width:100%;max-width:120px;border-radius:50%;border:1.5px solid rgba(14,165,233,.2);background:var(--s1);aspect-ratio:1;overflow:hidden;}
+.av-crosshair-h{position:absolute;top:50%;left:5%;right:5%;height:1px;background:rgba(14,165,233,.12);transform:translateY(-50%);}
+.av-crosshair-v{position:absolute;left:50%;top:5%;bottom:5%;width:1px;background:rgba(14,165,233,.12);transform:translateX(-50%);}
+.av-dot{position:absolute;width:12px;height:12px;border-radius:50%;background:#0EA5E9;top:50%;left:50%;transform:translate(-50%,-50%);transition:left .05s,top .05s,background .1s,box-shadow .1s;z-index:2;}
+.av-dot.warn{background:#F59E0B;box-shadow:0 0 6px rgba(245,158,11,.6);}
+.av-dot.bad{background:#EF4444;box-shadow:0 0 8px rgba(239,68,68,.7);}
+@keyframes avEventFlash{0%{transform:translate(-50%,-50%) scale(2.5);box-shadow:0 0 20px currentColor;}100%{transform:translate(-50%,-50%) scale(1);box-shadow:0 0 6px currentColor;}}
+.av-dot.event{animation:avEventFlash .7s ease-out;}
+.av-zbar-wrap{display:flex;flex-direction:column;align-items:center;width:40px;gap:3px;}
+.av-zbar{position:relative;flex:1;width:20px;background:var(--s1);border-radius:4px;border:1px solid rgba(14,165,233,.2);overflow:hidden;min-height:60px;}
+.av-zfill{position:absolute;bottom:50%;left:1px;right:1px;background:#0EA5E9;min-height:2px;border-radius:2px 2px 0 0;transition:height .06s linear,background .1s;}
+.av-zfill.warn{background:#F59E0B;}
+.av-zfill.bad{background:#EF4444;}
+@keyframes zEventFlash{0%{opacity:1;filter:brightness(2);}100%{opacity:1;filter:brightness(1);}}
+.av-zfill.event{animation:zEventFlash .7s ease-out;}
+.av-zcenter{position:absolute;top:50%;left:0;right:0;height:2px;background:rgba(14,165,233,.25);transform:translateY(-50%);}
+.av-zval{font-size:.62rem;color:var(--dim);font-family:var(--mono);}
 </style>
 </head>
 <body>
@@ -574,16 +596,23 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
     <div id="mapMeas"></div>
     <button class="btn-map-center" style="top:12px;right:12px;bottom:auto;left:auto" onclick="centerMapOnMe('meas')" title="Centrar en mi posición">⊕</button>
   </div>
-  <div class="m-chart-3axis">
-    <div class="chart-hdr">
-      <span class="chart-lbl">Acelerómetro EKG (±12 m/s²)</span>
-      <div class="chart-leg">
-        <div class="cl"><div class="cl-ln" style="background:#0EA5E9"></div>Z vert.</div>
-        <div class="cl"><div class="cl-ln" style="background:#EF4444"></div>X lat.</div>
-        <div class="cl"><div class="cl-ln" style="background:#10B981"></div>Y long.</div>
+  <div class="accel-viz" id="accelViz">
+    <div class="av-joystick">
+      <div class="av-label">LATERAL · LONG.</div>
+      <div class="av-circle" id="avCircle">
+        <div class="av-crosshair-h"></div>
+        <div class="av-crosshair-v"></div>
+        <div class="av-dot" id="avDot"></div>
       </div>
     </div>
-    <div class="chart-cnv"><canvas id="measChart3Axis"></canvas></div>
+    <div class="av-zbar-wrap">
+      <div class="av-label">VERT.</div>
+      <div class="av-zbar" id="avZbar">
+        <div class="av-zfill" id="avZfill"></div>
+        <div class="av-zcenter"></div>
+      </div>
+      <div class="av-zval" id="avZval">0.0</div>
+    </div>
   </div>
   <div class="m-stats">
     <div class="m-st"><div class="sl">Máx</div><div class="sv" id="aMax">—</div></div>

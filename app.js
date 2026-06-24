@@ -187,9 +187,8 @@ function updateBaselineIndicator(){
     det.textContent='Pulsa 🎯 para calibrar antes de iniciar';
     return;
   }
-  const noiseOk=S.noiseLevel<=0.15;
-  dot.style.background=noiseOk?'#10B981':'#F59E0B';
-  lbl.textContent=noiseOk?'✅ Ruido de fondo calibrado':'⚠️ Ruido de fondo elevado';
+  dot.style.background='#10B981';
+  lbl.textContent='✅ Sensor calibrado';
   const details=[];
   if(S.activeModes.has('iri'))details.push('IRI: baseline OK');
   if(S.activeModes.has('urban'))details.push('Urbano: umbral '+(S.noiseBaseline.mean+4*S.noiseBaseline.std).toFixed(3)+' m/s²');
@@ -294,7 +293,7 @@ function onGPS(pos){
   const lat=filtered.lat,lon=filtered.lon;
   S.gpsHistory.push({lat,lon,ts:Date.now(),accuracy:acc});
   if(S.gpsHistory.length>10)S.gpsHistory.shift();
-  const kmh=spd!=null?spd*3.6:0;
+  const kmh=(spd!=null&&spd>0.42)?spd*3.6:0;
   const at='±'+acc.toFixed(0)+'m';
   setChip('cGPS','dGPS','lGPS',acc<=20?'ok':'warn',acc<=20?'#10B981':'#F59E0B','GPS '+at);
   if(!S.gpsReady){
@@ -374,7 +373,7 @@ function onRaw(x,y,z){
   if(S.activeModes.has('comfort'))onComfortSample(x,y,z,Date.now());
   onVert(raw);
   if(S.active&&!S.paused){
-    feedRawAxisChart(x,y,z);
+    updateAccelViz(x,y,z);
     const _ts=Date.now();
     feedAdaptiveCalibration(x,y,z,_ts);
     queueUI('adaptiveCal',updateAdaptiveCalUI);
@@ -877,7 +876,7 @@ async function startMeasurement(){
   S.adaptiveCal={active:false,gravBuf:[],gravBufMax:180,lastUpdate:0,updateCount:0,driftDeg:0,driftThresholdDeg:2.0,status:'idle',_stopStart:null};
   S._manualRecalRequest=false;
   S.buf=[];S.chartZ=[];S.chartI=[];S.hpPrev=0;S.hpPrevIn=0;
-  stopEKG();
+  EKG.buf.marks=[];EKG.buf.totalSamples=0;
   S.lineMeas?.setLatLngs([]);
 
   if(S.activeModes.has('urban')){
@@ -910,7 +909,6 @@ async function startMeasurement(){
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     initMeasMap();
     if(S.lastPos&&S.mapMeas)mapCenter(S.mapMeas,S.lastPos.lat,S.lastPos.lon,17);
-    initEKG('measChart3Axis');
   }));
   ['aMax','aMed','aMin'].forEach(id=>set(id,'—'));set('aSegs','0');
   $('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');
@@ -919,8 +917,9 @@ async function startMeasurement(){
 function pauseMeasurement(){S.paused=true;$('btnPause').classList.add('hidden');$('btnResume').classList.remove('hidden');toast('⏸ Pausado');}
 function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');toast('▶ Reanudado');}
 function stopMeasurement(){
+  $('cameraSelectorModal')?.classList.add('hidden');
   S.active=false;S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
-  stopVideoBuffer();stopEKG();
+  stopVideoBuffer();EKG.buf.marks=[];EKG.buf.totalSamples=0;
   const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='none';
 
   const modesUsed=[...S.activeModes];
@@ -1882,75 +1881,34 @@ window.addEventListener('load',()=>{
 });
 
 // ─ EKG 3 canales Canvas 2D (Fase 4 v2) ───────────
-const EKG={
-  canvas:null,ctx:null,W:0,H:0,
-  buf:{z:[],x:[],y:[],marks:[],max:120,totalSamples:0},
-  COLORS:{z:'#0EA5E9',x:'#EF4444',y:'#10B981'},
-  LABELS:{z:'Z',x:'X',y:'Y'},
-  animId:null
-};
-function initEKG(canvasId){
-  EKG.canvas=$(canvasId);if(!EKG.canvas)return;
-  EKG.ctx=EKG.canvas.getContext('2d');
-  const resize=()=>{
-    const rect=EKG.canvas.getBoundingClientRect();
-    EKG.canvas.width=rect.width*devicePixelRatio;
-    EKG.canvas.height=rect.height*devicePixelRatio;
-    EKG.W=EKG.canvas.width;EKG.H=EKG.canvas.height;
-    if(EKG.buf.z.length)drawEKG();
-  };
-  resize();
-  new ResizeObserver(resize).observe(EKG.canvas);
-}
-function feedRawAxisChart(x,y,z){
-  EKG.buf.z.push(z);EKG.buf.x.push(x);EKG.buf.y.push(y);
+const EKG={buf:{marks:[],max:120,totalSamples:0}};
+function updateAccelViz(ax,ay,az){
+  const dot=$('avDot'),zFill=$('avZfill'),zVal=$('avZval');
+  if(!dot||!zFill)return;
   EKG.buf.totalSamples++;
-  if(EKG.buf.z.length>EKG.buf.max){EKG.buf.z.shift();EKG.buf.x.shift();EKG.buf.y.shift();}
-  if(!EKG.animId)EKG.animId=requestAnimationFrame(drawEKG);
+  const MAX_XY=4;
+  const pctX=Math.max(-44,Math.min(44,(ax/MAX_XY)*44));
+  const pctY=Math.max(-44,Math.min(44,(-ay/MAX_XY)*44));
+  dot.style.left=(50+pctX)+'%';
+  dot.style.top=(50+pctY)+'%';
+  const magXY=Math.sqrt(ax*ax+ay*ay);
+  if(!dot.classList.contains('event')){
+    dot.className='av-dot'+(magXY>2?' bad':magXY>1?' warn':'');
+  }
+  const g=S.grav;
+  const vertRaw=g?(ax*g.x+ay*g.y+az*g.z-S.gravMag):az;
+  const MAX_Z=6;
+  const pctZ=Math.max(0,Math.min(50,Math.abs(vertRaw)/MAX_Z*50));
+  zFill.style.height=pctZ+'%';
+  if(!zFill.classList.contains('event')){
+    zFill.className='av-zfill'+(Math.abs(vertRaw)>3?' bad':Math.abs(vertRaw)>1.5?' warn':'');
+  }
+  if(zVal)zVal.textContent=vertRaw.toFixed(2);
 }
-function drawEKG(){
-  EKG.animId=null;
-  const{ctx,W,H,buf,COLORS,LABELS}=EKG;if(!ctx||W===0)return;
-  const AXES=['z','x','y'],rowH=H/3,labelW=28*devicePixelRatio;
-  ctx.clearRect(0,0,W,H);
-  AXES.forEach((ax,i)=>{
-    const y0=i*rowH,plotW=W-labelW;
-    ctx.fillStyle=i%2===0?'rgba(9,24,41,.9)':'rgba(13,32,64,.9)';
-    ctx.fillRect(0,y0,W,rowH);
-    ctx.strokeStyle='rgba(14,165,233,.15)';ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(0,y0);ctx.lineTo(W,y0);ctx.stroke();
-    ctx.fillStyle=COLORS[ax];
-    ctx.font=`bold ${Math.round(11*devicePixelRatio)}px 'JetBrains Mono',monospace`;
-    ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText(LABELS[ax],labelW/2,y0+rowH/2);
-    const midY=y0+rowH/2;
-    ctx.strokeStyle='rgba(14,165,233,.12)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
-    ctx.beginPath();ctx.moveTo(labelW,midY);ctx.lineTo(W,midY);ctx.stroke();
-    ctx.setLineDash([]);
-    const data=buf[ax];if(data.length<2)return;
-    const scaleY=(rowH/2)/12;
-    ctx.strokeStyle=COLORS[ax];ctx.lineWidth=1.5*devicePixelRatio;
-    ctx.beginPath();
-    data.forEach((v,j)=>{
-      const px=labelW+(j/buf.max)*plotW,py=midY-v*scaleY;
-      j===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
-    });
-    ctx.stroke();
-    ctx.save();
-    buf.marks.forEach(m=>{
-      const bufStart=Math.max(0,buf.totalSamples-buf.max);
-      const relIdx=m.absIdx-bufStart;
-      if(relIdx<0||relIdx>=buf.max)return;
-      const px=labelW+(relIdx/buf.max)*plotW;
-      ctx.strokeStyle=m.color;ctx.lineWidth=2*devicePixelRatio;ctx.globalAlpha=.7;
-      ctx.beginPath();ctx.moveTo(px,y0+2);ctx.lineTo(px,y0+rowH-2);ctx.stroke();
-    });
-    ctx.restore();
-  });
-}
-function stopEKG(){
-  if(EKG.animId){cancelAnimationFrame(EKG.animId);EKG.animId=null;}
-  EKG.buf.z=[];EKG.buf.x=[];EKG.buf.y=[];EKG.buf.marks=[];EKG.buf.totalSamples=0;
+function flashAccelEvent(color){
+  const dot=$('avDot'),zFill=$('avZfill');
+  if(dot){dot.style.color=color;dot.classList.add('event');setTimeout(()=>dot.classList.remove('event'),700);}
+  if(zFill){zFill.classList.add('event');setTimeout(()=>zFill.classList.remove('event'),700);}
 }
 function registerChartMark(color,source){
   if(!EKG.buf)return;
@@ -1959,6 +1917,7 @@ function registerChartMark(color,source){
   if(lastMark&&(now-lastMark.absIdx)<45)return;
   EKG.buf.marks.push({absIdx:now-1,color,source,ts:Date.now()});
   EKG.buf.marks=EKG.buf.marks.filter(m=>(now-m.absIdx)<=EKG.buf.max);
+  flashAccelEvent(color);
 }
 
 // ─ Calibración adaptativa A3 ──────────────────
