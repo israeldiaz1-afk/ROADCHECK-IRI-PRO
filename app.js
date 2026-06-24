@@ -180,6 +180,7 @@ function recalcMainLayout(){
 }
 function updateBaselineIndicator(){
   const dot=$('biDot'),lbl=$('biLabel'),det=$('biDetail');
+  console.log('[baseline] dot='+!!dot+' calibrated='+S.calibrated+' biDot en DOM='+!!document.getElementById('biDot'));
   if(!dot)return;
   if(!S.calibrated){
     dot.style.background='#3A5F7A';
