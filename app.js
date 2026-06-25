@@ -1336,9 +1336,46 @@ function doXLSX(r){
   const ws3=XLSX.utils.aoa_to_sheet(sum);ws3['!cols']=[{wch:28},{wch:70}];XLSX.utils.book_append_sheet(wb,ws3,'Resumen');
   XLSX.writeFile(wb,'pavcheck_'+r.id.slice(-6)+'.xlsx');toast('Excel exportado ✓');
 }
+function getReportMode(session){
+  const modes=session.modesUsed||[];
+  if(modes.includes('urban')&&!modes.includes('iri'))return'urban';
+  if(modes.includes('iri')&&!modes.includes('urban'))return'iri';
+  return'mixed';
+}
+async function expHTMLUrban(r){
+  const events=r.urbanData?.events||[];
+  if(!events.length){toast('Sin eventos urbanos');return;}
+  const sevColors={leve:'#F59E0B',moderado:'#F97316',grave:'#EF4444'};
+  const typeIcons={pothole:'🕳️',manhole:'⭕',speedbump:'⛰️',crack:'〰️',degraded:'🔴',patch:'🔧',unknown:'❓'};
+  const total=events.length;
+  const graves=events.filter(e=>e.severity==='grave').length;
+  const moderados=events.filter(e=>e.severity==='moderado').length;
+  const validated=events.filter(e=>e.humanLabel).length;
+  const eventsWithImages=await Promise.all(events.map(async e=>{
+    const blob=e._frameBlobs?.[1]?.blob||e._frameBlobs?.[0]?.blob||null;
+    const imgB64=blob?await blobToBase64(blob):null;
+    return{...e,imgB64};
+  }));
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Informe Urbano — Pavement Check</title>
+<style>body{font-family:'Segoe UI',sans-serif;margin:0;padding:16px;background:#f8f9fa;color:#1a1a2e}h1{font-size:1.4rem;color:#0EA5E9;margin-bottom:4px}.meta{font-size:.8rem;color:#666;margin-bottom:16px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px}.stat{background:#fff;border-radius:8px;padding:12px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.1)}.stat-val{font-size:1.8rem;font-weight:700}.stat-lbl{font-size:.72rem;color:#666}.events{display:grid;gap:16px}.event{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.12)}.event-img{width:100%;max-height:220px;object-fit:cover}.event-body{padding:12px}.event-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.event-type{font-weight:700;font-size:1rem}.event-sev{font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:10px}.event-meta{font-size:.72rem;color:#666;font-family:monospace;margin-top:4px}.event-desc{font-size:.8rem;color:#444;margin-top:6px;font-style:italic}.event-val{display:inline-block;font-size:.68rem;padding:2px 8px;border-radius:8px;margin-top:4px}.val-ok{background:#d1fae5;color:#065f46}.val-no{background:#fee2e2;color:#991b1b}.val-edit{background:#fef3c7;color:#92400e}.no-img{height:100px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:2rem}@media print{.events{display:block}.event{page-break-inside:avoid;margin-bottom:16px}}</style>
+</head><body>
+<h1>📋 Informe de Patologías de Pavimento Urbano</h1>
+<div class="meta">Fecha: ${new Date(r.ts||Date.now()).toLocaleString('es-ES')} · Ruta: ${r.name||'Sin nombre'} · Distancia: ${(r.dist||0).toFixed(0)} m · Pavement Check v1.0</div>
+<div class="stats"><div class="stat"><div class="stat-val">${total}</div><div class="stat-lbl">Total eventos</div></div><div class="stat"><div class="stat-val" style="color:#EF4444">${graves}</div><div class="stat-lbl">Graves</div></div><div class="stat"><div class="stat-val" style="color:#F97316">${moderados}</div><div class="stat-lbl">Moderados</div></div><div class="stat"><div class="stat-val" style="color:#10B981">${validated}</div><div class="stat-lbl">Validados</div></div></div>
+<div class="events">${eventsWithImages.map((e,i)=>{
+  const icon=typeIcons[e.type]||'❓';
+  const sCol=sevColors[e.severity]||'#666';
+  const valBadge=e.humanLabel==='confirmed'?'<span class="event-val val-ok">✅ Confirmado</span>':e.humanLabel==='discarded'?'<span class="event-val val-no">❌ Falso positivo</span>':e.humanLabel==='corrected'?'<span class="event-val val-edit">✏️ Corregido</span>':'';
+  const imgHtml=e.imgB64?`<img class="event-img" src="data:image/jpeg;base64,${e.imgB64}" alt="Evento ${i+1}">`:'<div class="no-img">📷</div>';
+  return`<div class="event">${imgHtml}<div class="event-body"><div class="event-header"><span class="event-type">${icon} ${e.type||'desconocido'}</span><span class="event-sev" style="background:${sCol}22;color:${sCol}">${e.severity||'—'}</span></div><div class="event-meta">Score: ${e.score?.toFixed(0)||'—'} · ${e.speed?.toFixed(0)||'—'} km/h · ${e.lat?.toFixed(5)||'—'}, ${e.lon?.toFixed(5)||'—'}</div>${e.gemini?.description?`<div class="event-desc">"${e.gemini.description}"</div>`:''}${valBadge}</div></div>`;
+}).join('')}</div>
+</body></html>`;
+  dlBlob(html,'text/html','informe_urbano_'+(r.name||'ruta').replace(/\s/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.html');
+}
 function expHTML(id){
   const r=allRoutes().find(r=>r.id===id);if(!r)return;
   const modes=r.modesUsed||['iri'];
+  if(getReportMode(r)==='urban'){expHTMLUrban(r);return;}
   // Unified route: delegate comfort-only to comfort exporter; multi-mode builds combined HTML
   if(!modes.includes('iri')&&modes.includes('comfort')&&!modes.includes('urban')){expComfortHTML(id,r);return;}
   if(!r?.pts)return;
