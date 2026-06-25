@@ -179,9 +179,7 @@ function recalcMainLayout(){
   updateBaselineIndicator();
 }
 function updateBaselineIndicator(){
-  toast('[baseline inicio]');
   const dot=$('biDot'),lbl=$('biLabel'),det=$('biDetail');
-  toast('[B] dot='+!!$('biDot')+' cal='+S.calibrated);
   if(!dot)return;
   if(!S.calibrated){
     dot.style.background='#3A5F7A';
@@ -609,7 +607,6 @@ function doCalSample(x,y,z){
   }
 }
 function endCal(ok,err=''){
-  toast('[endCal inicio] ok='+ok);
   S.calPhase=0;$('calPanel')?.classList.add('hidden');
   if(!ok){recalcMainLayout();set('calLbl','Calibrar');$('calIco').textContent='🎯';set('calVal','Pulsa para calibrar');toast('⚠️ Calibración fallida: '+err);return;}
   if(S.vibSamples.length>0){S.noiseLevel=Math.max(DEF.noiseFloor,rmsA(S.vibSamples)*1.5);C.noiseFloor=S.noiseLevel;saveCfg();}
@@ -633,12 +630,11 @@ function endCal(ok,err=''){
       (1.96*(rmsBaseline*0.7)**2)
     );
     S.comfort.avBaseline=Math.min(avBaseline*1.1,0.5);
-    log('[Comfort baseline] av='+S.comfort.avBaseline.toFixed(4));
+    console.log('[Comfort baseline] av='+S.comfort.avBaseline.toFixed(4));
   }
   recalcMainLayout();
   updateBaselineIndicator();
   setTimeout(updateBaselineIndicator,300);
-  setTimeout(()=>toast('[endCal] cal='+S.calibrated+' dot='+!!$('biDot')),350);
   toast('✅ Todo listo — calibración completada · Ruido: '+S.noiseLevel.toFixed(3)+' m/s²');
 }
 function doCalibrate(){startCal();}
