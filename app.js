@@ -1887,19 +1887,22 @@ window.addEventListener('load',()=>{
 const EKG={buf:{marks:[],max:120,totalSamples:0}};
 function updateAccelViz(ax,ay,az){
   const dot=$('avDot'),zFill=$('avZfill'),zVal=$('avZval');
-  if(!dot||!zFill)return;
+  if(!dot||!zFill||!S.grav)return;
   EKG.buf.totalSamples++;
+  const g=S.grav;
+  const vertRaw=ax*g.x+ay*g.y+az*g.z-S.gravMag;
+  const dot_ag=ax*g.x+ay*g.y+az*g.z;
+  const projX=ax-dot_ag*g.x;
+  const projY=ay-dot_ag*g.y;
   const MAX_XY=4;
-  const pctX=Math.max(-44,Math.min(44,(ax/MAX_XY)*44));
-  const pctY=Math.max(-44,Math.min(44,(-ay/MAX_XY)*44));
+  const pctX=Math.max(-44,Math.min(44,(projX/MAX_XY)*44));
+  const pctY=Math.max(-44,Math.min(44,(-projY/MAX_XY)*44));
   dot.style.left=(50+pctX)+'%';
   dot.style.top=(50+pctY)+'%';
-  const magXY=Math.sqrt(ax*ax+ay*ay);
+  const magXY=Math.sqrt(projX*projX+projY*projY);
   if(!dot.classList.contains('event')){
     dot.className='av-dot'+(magXY>2?' bad':magXY>1?' warn':'');
   }
-  const g=S.grav;
-  const vertRaw=g?(ax*g.x+ay*g.y+az*g.z-S.gravMag):az;
   const MAX_Z=6;
   const pctZ=Math.max(0,Math.min(50,Math.abs(vertRaw)/MAX_Z*50));
   zFill.style.height=pctZ+'%';
