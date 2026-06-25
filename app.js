@@ -2210,7 +2210,10 @@ function skipCamera(){
 }
 
 async function startVideoBuffer(){
-  if(VIDEO_BUF.capturing)return;
+  if(VIDEO_BUF.capturing){
+    log('[Video] Ya capturando — reiniciando');
+    stopVideoBuffer();
+  }
   try{
     const constraints={
       video:S.selectedCameraId
@@ -2224,8 +2227,11 @@ async function startVideoBuffer(){
     VIDEO_BUF.video.playsInline=true;
     VIDEO_BUF.video.muted=true;
     await VIDEO_BUF.video.play();
-    VIDEO_BUF.canvas=document.createElement('canvas');
-    VIDEO_BUF.canvas.width=1280;VIDEO_BUF.canvas.height=720;
+    if(!VIDEO_BUF.canvas){
+      VIDEO_BUF.canvas=document.createElement('canvas');
+    }
+    VIDEO_BUF.canvas.width=1280;
+    VIDEO_BUF.canvas.height=720;
     VIDEO_BUF.ctx=VIDEO_BUF.canvas.getContext('2d');
     VIDEO_BUF.captureInterval=setInterval(captureFrame,250);
     VIDEO_BUF.capturing=true;
