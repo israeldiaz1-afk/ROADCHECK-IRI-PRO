@@ -2234,7 +2234,9 @@ async function startVideoBuffer(){
     const btn=$('btnPhoto');if(btn)btn.classList.remove('hidden');
     console.log('[Cámara] Buffer de vídeo activo');
   }catch(e){
-    console.log('[Cámara] No disponible: '+e.message);
+    log('[Video] Error getUserMedia: '+e.message+
+        ' | name:'+e.name);
+    toast('⚠️ Cámara: '+e.name+' — '+e.message);
   }
 }
 
