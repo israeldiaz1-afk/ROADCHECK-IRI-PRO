@@ -2178,6 +2178,7 @@ async function initCameraSelector(){
   }catch(e){
     log('[Cámara] initCameraSelector error: '+e.message);
     S.selectedCameraId=null;
+    startVideoBuffer();
   }
 }
 function openCameraSelector(){
@@ -2228,7 +2229,7 @@ async function startVideoBuffer(){
     VIDEO_BUF.ctx=VIDEO_BUF.canvas.getContext('2d');
     VIDEO_BUF.captureInterval=setInterval(captureFrame,250);
     VIDEO_BUF.capturing=true;
-    log('[Video] Buffer activo — frames se acumulan');
+    log('[Video] Buffer activo — '+VIDEO_BUF.canvas.width+'x'+VIDEO_BUF.canvas.height);
     toast('📷 Cámara activa');
     const btn=$('btnPhoto');if(btn)btn.classList.remove('hidden');
     console.log('[Cámara] Buffer de vídeo activo');
