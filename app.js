@@ -576,6 +576,14 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
   addToGallery(event);
   if(event._frameBlob){showEventThumbnail(event);analyzeEventWithGemini(event,event._frameBlob);}
   else console.log('[Gemini] Sin frame disponible para este evento');
+  const frames=extractFramesForEvent(event.ts,event.speed||0);
+  event._frameBlobs=frames;
+  event._frameBlob=frames[1]?.blob||frames[0]?.blob;
+  if(frames.length>0){
+    addToGallery(event);
+    showEventThumbnail(event);
+    log('[Gallery] Evento añadido con '+frames.length+' frames');
+  }
 }
 function showIOSPerm(){$('sensorPermModal')?.classList.remove('hidden');}
 function grantIOS(){$('sensorPermModal')?.classList.add('hidden');DeviceMotionEvent.requestPermission().then(s=>{if(s==='granted'){S.sensorOK=true;$('btnIOS')?.classList.add('hidden');tryAccel();startCal();toast('Permiso concedido');}else toast('Permiso denegado');});}
@@ -955,7 +963,6 @@ function stopMeasurement(){
     iriData,urbanData,comfortData
   };
   $('routeNameInput').value='';$('routeNameModal').classList.remove('hidden');
-  updateNoiseFilterUI();
   const galBtn=$('galOpenBtn');
   if(galBtn){
     const unvalidated=GAL.items.filter(i=>!i.event.humanLabel).length;
@@ -1360,7 +1367,7 @@ async function expHTMLUrban(r){
 <style>body{font-family:'Segoe UI',sans-serif;margin:0;padding:16px;background:#f8f9fa;color:#1a1a2e}h1{font-size:1.4rem;color:#0EA5E9;margin-bottom:4px}.meta{font-size:.8rem;color:#666;margin-bottom:16px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px}.stat{background:#fff;border-radius:8px;padding:12px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.1)}.stat-val{font-size:1.8rem;font-weight:700}.stat-lbl{font-size:.72rem;color:#666}.events{display:grid;gap:16px}.event{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.12)}.event-img{width:100%;max-height:220px;object-fit:cover}.event-body{padding:12px}.event-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.event-type{font-weight:700;font-size:1rem}.event-sev{font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:10px}.event-meta{font-size:.72rem;color:#666;font-family:monospace;margin-top:4px}.event-desc{font-size:.8rem;color:#444;margin-top:6px;font-style:italic}.event-val{display:inline-block;font-size:.68rem;padding:2px 8px;border-radius:8px;margin-top:4px}.val-ok{background:#d1fae5;color:#065f46}.val-no{background:#fee2e2;color:#991b1b}.val-edit{background:#fef3c7;color:#92400e}.no-img{height:100px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:2rem}@media print{.events{display:block}.event{page-break-inside:avoid;margin-bottom:16px}}</style>
 </head><body>
 <h1>📋 Informe de Patologías de Pavimento Urbano</h1>
-<div class="meta">Fecha: ${new Date(r.ts||Date.now()).toLocaleString('es-ES')} · Ruta: ${r.name||'Sin nombre'} · Distancia: ${(r.dist||0).toFixed(0)} m · Pavement Check v1.0</div>
+<div class="meta">Fecha: ${new Date(r.ts||Date.now()).toLocaleString('es-ES')} · Ruta: ${r.name||'Sin nombre'} · Distancia: ${(r.dist||0).toFixed(0)} m · Pavement Check v1.0</div>${noiseBtn}
 <div class="stats"><div class="stat"><div class="stat-val">${total}</div><div class="stat-lbl">Total eventos</div></div><div class="stat"><div class="stat-val" style="color:#EF4444">${graves}</div><div class="stat-lbl">Graves</div></div><div class="stat"><div class="stat-val" style="color:#F97316">${moderados}</div><div class="stat-lbl">Moderados</div></div><div class="stat"><div class="stat-val" style="color:#10B981">${validated}</div><div class="stat-lbl">Validados</div></div></div>
 <div class="events">${eventsWithImages.map((e,i)=>{
   const icon=typeIcons[e.type]||'❓';
@@ -1370,6 +1377,9 @@ async function expHTMLUrban(r){
   return`<div class="event">${imgHtml}<div class="event-body"><div class="event-header"><span class="event-type">${icon} ${e.type||'desconocido'}</span><span class="event-sev" style="background:${sCol}22;color:${sCol}">${e.severity||'—'}</span></div><div class="event-meta">Score: ${e.score?.toFixed(0)||'—'} · ${e.speed?.toFixed(0)||'—'} km/h · ${e.lat?.toFixed(5)||'—'}, ${e.lon?.toFixed(5)||'—'}</div>${e.gemini?.description?`<div class="event-desc">"${e.gemini.description}"</div>`:''}${valBadge}</div></div>`;
 }).join('')}</div>
 </body></html>`;
+  const noiseBtn=S.noiseFilter?.appliedPost
+    ?'<p style="color:#10B981;font-size:.8rem">✅ Ruido de fondo eliminado</p>'
+    :'<button onclick="applyPostProcessNoise();this.parentNode.removeChild(this);document.querySelector(\'.meta\').insertAdjacentHTML(\'afterend\',\'<p style=\\\"color:#10B981\\\">✅ Ruido eliminado</p>\')" style="margin:8px 0;padding:8px 16px;background:#0EA5E9;color:#05111F;border:none;border-radius:6px;cursor:pointer;font-size:.8rem">🧹 Limpiar ruido de fondo</button>';
   dlBlob(html,'text/html','informe_urbano_'+(r.name||'ruta').replace(/\s/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.html');
 }
 function expHTML(id){
@@ -2218,6 +2228,8 @@ async function startVideoBuffer(){
     VIDEO_BUF.ctx=VIDEO_BUF.canvas.getContext('2d');
     VIDEO_BUF.captureInterval=setInterval(captureFrame,250);
     VIDEO_BUF.capturing=true;
+    log('[Video] Buffer activo — frames se acumulan');
+    toast('📷 Cámara activa');
     const btn=$('btnPhoto');if(btn)btn.classList.remove('hidden');
     console.log('[Cámara] Buffer de vídeo activo');
   }catch(e){
