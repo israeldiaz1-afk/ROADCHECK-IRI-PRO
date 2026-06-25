@@ -570,8 +570,11 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
       console.log('[GPS] Snapping: '+snapped.snapDist.toFixed(1)+'m → calzada');
     }
   });
-  const imageBlob=extractFrameForEvent(event.ts,event.speed);
-  if(imageBlob)analyzeEventWithGemini(event,imageBlob);
+  event._frameBlobs=extractFramesForEvent(event.ts,event.speed||0);
+  event._frameBlob=event._frameBlobs[1]?.blob||event._frameBlobs[0]?.blob;
+  log('[Frames] Capturados '+event._frameBlobs.length+' frames para evento '+event.id);
+  addToGallery(event);
+  if(event._frameBlob){showEventThumbnail(event);analyzeEventWithGemini(event,event._frameBlob);}
   else console.log('[Gemini] Sin frame disponible para este evento');
 }
 function showIOSPerm(){$('sensorPermModal')?.classList.remove('hidden');}
@@ -2149,8 +2152,8 @@ async function startVideoBuffer(){
   try{
     const constraints={
       video:S.selectedCameraId
-        ?{deviceId:{exact:S.selectedCameraId},width:{ideal:640},height:{ideal:480}}
-        :{facingMode:'environment',width:{ideal:640},height:{ideal:480}},
+        ?{deviceId:{exact:S.selectedCameraId},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}}
+        :{facingMode:'environment',width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}},
       audio:false
     };
     VIDEO_BUF.stream=await navigator.mediaDevices.getUserMedia(constraints);
@@ -2160,7 +2163,7 @@ async function startVideoBuffer(){
     VIDEO_BUF.video.muted=true;
     await VIDEO_BUF.video.play();
     VIDEO_BUF.canvas=document.createElement('canvas');
-    VIDEO_BUF.canvas.width=640;VIDEO_BUF.canvas.height=480;
+    VIDEO_BUF.canvas.width=1280;VIDEO_BUF.canvas.height=720;
     VIDEO_BUF.ctx=VIDEO_BUF.canvas.getContext('2d');
     VIDEO_BUF.captureInterval=setInterval(captureFrame,250);
     VIDEO_BUF.capturing=true;
@@ -2174,14 +2177,14 @@ async function startVideoBuffer(){
 function captureFrame(){
   if(!VIDEO_BUF.ctx||!VIDEO_BUF.video)return;
   try{
-    VIDEO_BUF.ctx.drawImage(VIDEO_BUF.video,0,0,640,480);
+    VIDEO_BUF.ctx.drawImage(VIDEO_BUF.video,0,0,1280,720);
     VIDEO_BUF.canvas.toBlob(blob=>{
       if(!blob)return;
       const ts=Date.now();
       VIDEO_BUF.frames.push({ts,blob});
       const cutoff=ts-VIDEO_BUF.maxAgeMs;
       while(VIDEO_BUF.frames.length>0&&VIDEO_BUF.frames[0].ts<cutoff)VIDEO_BUF.frames.shift();
-    },'image/jpeg',0.75);
+    },'image/jpeg',0.85);
   }catch(e){}
 }
 
@@ -2194,11 +2197,28 @@ function stopVideoBuffer(){
 }
 
 function calcFrameDelay(speedKmh){
-  const analysisWindowMs=400;
-  const distCameraToRear=3.5;
-  const speedMs=speedKmh/3.6;
-  const extraDelayMs=speedMs>0?(distCameraToRear/speedMs)*1000:0;
-  return analysisWindowMs+extraDelayMs;
+  const analysisMs=300;
+  const cameraOffsetM=2.0;
+  const speedMs=Math.max(speedKmh/3.6,0.1);
+  return Math.min(analysisMs+(cameraOffsetM/speedMs)*1000,VIDEO_BUF.maxAgeMs*0.85);
+}
+function extractFramesForEvent(eventTs,speedKmh){
+  if(!VIDEO_BUF.frames.length){log('[Frames] Sin frames en buffer');return[];}
+  const D=calcFrameDelay(speedKmh);
+  const targets=[
+    {label:'A',ts:eventTs-(D+200)},
+    {label:'B',ts:eventTs-D},
+    {label:'C',ts:eventTs-(D-200)}
+  ];
+  const results=targets.map(t=>{
+    let best=null,bestDiff=Infinity;
+    VIDEO_BUF.frames.forEach(f=>{const d=Math.abs(f.ts-t.ts);if(d<bestDiff){best=f;bestDiff=d;}});
+    const valid=best&&bestDiff<800;
+    log('[Frame '+t.label+'] diff='+bestDiff.toFixed(0)+'ms '+(valid?'✓':'✗'));
+    return valid?{blob:best.blob,label:t.label,diff:bestDiff}:null;
+  }).filter(Boolean);
+  const seen=new Set();
+  return results.filter(r=>{if(seen.has(r.blob))return false;seen.add(r.blob);return true;});
 }
 
 function extractFrameForEvent(eventTs,speedKmh){
