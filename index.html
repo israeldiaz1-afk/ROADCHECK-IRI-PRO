@@ -380,6 +380,47 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .btn-map-center{position:absolute;bottom:12px;right:12px;z-index:1000;width:44px;height:44px;background:var(--s1);border:2px solid rgba(14,165,233,.4);border-radius:50%;color:var(--sky);font-size:1.4rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:background .15s}
 .btn-map-center:active{background:rgba(14,165,233,.2)}
 
+/* ── GALERÍA DE VALIDACIÓN ── */
+.gallery-modal-box{position:fixed;inset:0;z-index:8000;background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
+.gal-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--s1);border-bottom:1px solid rgba(14,165,233,.15);flex-shrink:0}
+.gal-counter{font-family:var(--mono);font-size:var(--fs-sm);color:var(--sky)}
+.gal-title{font-size:var(--fs-sm);color:var(--txt)}
+.gal-close{background:none;border:none;color:var(--dim);font-size:1.2rem;cursor:pointer;width:36px;height:36px}
+.gal-image-wrap{flex:1;position:relative;overflow:hidden;background:#000;cursor:grab;min-height:0}
+.gal-image-wrap:active{cursor:grabbing}
+#galCanvas{display:block;width:100%;height:100%;object-fit:contain;touch-action:none}
+.gal-frame-badge{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;font-size:.65rem;font-family:var(--mono);padding:3px 8px;border-radius:8px;pointer-events:none}
+.gal-no-image{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:2rem}
+.gal-thumbs{display:flex;gap:6px;padding:6px 14px;background:#000;flex-shrink:0;overflow-x:auto;justify-content:center}
+.gal-thumb{width:72px;height:54px;object-fit:cover;border-radius:4px;cursor:pointer;flex-shrink:0;border:2px solid transparent;transition:border-color .15s,opacity .15s;opacity:.6}
+.gal-thumb.active{border-color:var(--sky);opacity:1}
+.gal-thumb-wrap{position:relative;flex-shrink:0}
+.gal-thumb-label{position:absolute;bottom:2px;left:50%;transform:translateX(-50%);font-size:.5rem;color:#fff;background:rgba(0,0,0,.5);padding:1px 4px;border-radius:3px;pointer-events:none;font-family:var(--mono)}
+.gal-info{padding:8px 14px;flex-shrink:0;border-top:1px solid rgba(14,165,233,.1)}
+.gal-badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.gal-badge{font-size:var(--fs-xs);font-family:var(--mono);padding:2px 8px;border-radius:10px;background:var(--s2);color:var(--txt)}
+.gal-badge.confirmed{background:rgba(16,185,129,.2);color:#10B981}
+.gal-badge.discarded{background:rgba(239,68,68,.2);color:#EF4444}
+.gal-badge.corrected{background:rgba(245,158,11,.2);color:#F59E0B}
+.gal-desc{font-size:var(--fs-xs);color:var(--dim);font-family:var(--mono)}
+.gal-coords{font-size:var(--fs-xs);color:var(--dim);font-family:var(--mono)}
+.gal-actions{display:flex;gap:8px;padding:8px 14px;flex-shrink:0;background:var(--s1)}
+.gal-btn{flex:1;padding:10px 0;border:none;border-radius:8px;font-size:var(--fs-sm);font-weight:700;cursor:pointer;min-height:var(--tap-min)}
+.gal-confirm{background:rgba(16,185,129,.15);color:#10B981;border:1px solid rgba(16,185,129,.3)}
+.gal-correct{background:rgba(245,158,11,.15);color:#F59E0B;border:1px solid rgba(245,158,11,.3)}
+.gal-reject{background:rgba(239,68,68,.15);color:#EF4444;border:1px solid rgba(239,68,68,.3)}
+.gal-btn:disabled{opacity:.4;pointer-events:none}
+.gal-nav{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;flex-shrink:0;border-top:1px solid rgba(14,165,233,.1)}
+.gal-nav-btn{background:var(--s2);border:1px solid rgba(14,165,233,.2);color:var(--txt);padding:8px 16px;border-radius:6px;font-size:var(--fs-sm);cursor:pointer;min-height:var(--tap-min)}
+.gal-nav-btn:disabled{opacity:.3;pointer-events:none}
+.gal-nav-dots{display:flex;gap:5px}
+.gal-nav-dot{width:6px;height:6px;border-radius:50%;background:var(--dim);transition:background .2s}
+.gal-nav-dot.active{background:var(--sky)}
+.modal-box{background:var(--s1);border-radius:12px;padding:16px;width:90%;max-width:360px}
+.type-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.type-btn{padding:12px 8px;border:1px solid rgba(14,165,233,.2);border-radius:8px;background:var(--s2);color:var(--txt);font-size:var(--fs-sm);cursor:pointer;text-align:center}
+.type-btn:active{background:rgba(14,165,233,.15)}
+
 /* ── ACCEL VIZ JOYSTICK + Z-BAR ── */
 .accel-viz{display:flex;gap:10px;padding:6px 10px;background:var(--s2);border-radius:var(--r8);flex:1;min-height:0;align-items:stretch;}
 .av-joystick{display:flex;flex-direction:column;align-items:center;flex:1;gap:3px;}
@@ -519,7 +560,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 <div id="addVehicleModal" class="modal-bg hidden"><div class="modal"><div class="mh"></div><h3>Nuevo Vehículo</h3><span class="m-lbl">Nombre</span><input type="text" class="m-in" id="vName" placeholder="Ej: Peugeot 307 SW 2002…"><span class="m-lbl">Categoría</span><select class="m-sel" id="vCat"><option>Compacto</option><option>Sedán</option><option>SUV</option><option>Deportivo</option><option>Pick-up</option><option>Furgoneta</option><option>Personalizado</option></select><span class="m-lbl">Coef. A: <span id="coefALbl">2.00</span></span><div class="m-sl"><input type="range" id="vCoefA" min="0.5" max="5.0" step="0.05" value="2.0" oninput="document.getElementById('coefALbl').textContent=parseFloat(this.value).toFixed(2)"><span class="m-slv">2.00</span></div><span class="m-lbl">Coef. B: <span id="coefBLbl">0.50</span></span><div class="m-sl"><input type="range" id="vCoefB" min="0.0" max="3.0" step="0.05" value="0.5" oninput="document.getElementById('coefBLbl').textContent=parseFloat(this.value).toFixed(2)"><span class="m-slv">0.50</span></div><div class="modal-btns"><button class="btn btn-sec" onclick="closeAddVehicle()">Cancelar</button><button class="btn btn-pri" style="flex:1" onclick="saveNewVehicle()">Guardar</button></div></div></div>
 <div id="segModal" class="modal-bg hidden"><div class="modal"><div class="mh"></div><h3>Longitud de Tramo</h3><p class="sub">Tramos cortos: mayor resolución. Tramos largos: valores más estables.</p><span class="m-lbl">Longitud: <span id="segValLbl">100 m</span></span><div class="m-sl"><input type="range" id="segSlider" min="20" max="200" step="5" value="100" oninput="document.getElementById('segValLbl').textContent=this.value+' m'"><span class="m-slv" id="segSV">100 m</span></div><div class="modal-btns"><button class="btn btn-sec" onclick="closeSegModal()">Cancelar</button><button class="btn btn-pri" style="flex:1" onclick="saveSegLen()">Aplicar</button></div></div></div>
 <div id="speedModal" class="modal-bg hidden"><div class="modal"><div class="mh"></div><h3>Corrección por Velocidad</h3><p class="sub">IRI_c = IRI_m × (v_ref/v)^n · Estándar ASTM E1364: 80 km/h.</p><span class="m-lbl">Velocidad referencia: <span id="vRefLbl">80</span> km/h</span><div class="m-sl"><input type="range" id="vRefSlider" min="20" max="130" step="5" value="80" oninput="document.getElementById('vRefLbl').textContent=this.value"><span class="m-slv" id="vRefSV">80</span></div><span class="m-lbl">Exponente n: <span id="vExpLbl">0.50</span></span><div class="m-sl"><input type="range" id="vExpSlider" min="0.1" max="1.5" step="0.05" value="0.5" oninput="document.getElementById('vExpLbl').textContent=parseFloat(this.value).toFixed(2)"><span class="m-slv" id="vExpSV">0.50</span></div><span class="m-lbl">Vel. mínima: <span id="vMinLbl">10</span> km/h</span><div class="m-sl"><input type="range" id="vMinSlider" min="3" max="30" step="1" value="10" oninput="document.getElementById('vMinLbl').textContent=this.value"><span class="m-slv" id="vMinSV">10</span></div><div class="modal-btns"><button class="btn btn-sec" onclick="closeSpeedModal()">Cancelar</button><button class="btn btn-pri" style="flex:1" onclick="saveSpeedCfg()">Aplicar</button></div></div></div>
-<div id="routeNameModal" class="modal-bg hidden"><div class="modal"><div class="mh"></div><h3>Guardar Ruta</h3><p class="sub">Asigna un nombre descriptivo a esta ruta.</p><span class="m-lbl">Nombre de la ruta</span><input type="text" class="m-in" id="routeNameInput" placeholder="Ej: Calle Mayor — Tramo Norte…"><div class="noise-filter-row" id="noiseFilterRow" style="display:none;align-items:center;gap:8px;margin:4px 0"><span class="nfr-info" id="noiseFilterInfo" style="font-size:.62rem;color:var(--dim);font-family:var(--mono);flex:1"></span><button class="btn btn-sec" style="font-size:.62rem" onclick="applyPostProcessNoise();updateNoiseFilterUI()">🧹 Limpiar ruido</button></div><div class="modal-btns"><button class="btn btn-red" onclick="discardRoute()">Descartar</button><button class="btn btn-pri" style="flex:1" onclick="confirmSave()">Guardar</button></div></div></div>
+<div id="routeNameModal" class="modal-bg hidden"><div class="modal"><div class="mh"></div><h3>Guardar Ruta</h3><p class="sub">Asigna un nombre descriptivo a esta ruta.</p><span class="m-lbl">Nombre de la ruta</span><input type="text" class="m-in" id="routeNameInput" placeholder="Ej: Calle Mayor — Tramo Norte…"><div class="noise-filter-row" id="noiseFilterRow" style="display:none;align-items:center;gap:8px;margin:4px 0"><span class="nfr-info" id="noiseFilterInfo" style="font-size:.62rem;color:var(--dim);font-family:var(--mono);flex:1"></span><button class="btn btn-sec" style="font-size:.62rem" onclick="applyPostProcessNoise();updateNoiseFilterUI()">🧹 Limpiar ruido</button></div><button class="btn btn-sec" style="width:100%;margin-top:6px;display:none" id="galOpenBtn" onclick="openEventGallery()">📷 Validar eventos</button><div class="modal-btns"><button class="btn btn-red" onclick="discardRoute()">Descartar</button><button class="btn btn-pri" style="flex:1" onclick="confirmSave()">Guardar</button></div></div></div>
 <div id="overlapModal" class="modal-bg hidden"><div class="modal"><div class="mh"></div><h3>Tramos Coincidentes</h3><p class="sub">Solapamientos detectados entre las rutas seleccionadas:</p><ul id="overlapList" class="ov-list"></ul><p style="font-size:.63rem;color:var(--dim);margin-top:5px;line-height:1.6">¿Combinar y promediar los valores IRI en los tramos coincidentes?</p><div class="modal-btns"><button class="btn btn-sec" onclick="resolveOverlap(false)">Por separado</button><button class="btn btn-pri" style="flex:1" onclick="resolveOverlap(true)">Sí, combinar</button></div></div></div>
 <div id="sensorPermModal" class="modal-bg hidden"><div class="modal"><div class="mh"></div><h3>Permiso de Movimiento</h3><p class="sub">iOS 13+ requiere permiso para acceder al acelerómetro.</p><button class="btn btn-pri" style="width:100%;padding:12px;margin-bottom:6px" onclick="grantIOS()">Conceder acceso</button><button class="btn btn-sec" style="width:100%" onclick="document.getElementById('sensorPermModal').classList.add('hidden')">Cancelar</button></div></div>
 
@@ -534,6 +575,46 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
       <button class="btn btn-pri" style="flex:1" onclick="confirmCameraSelection()">Usar esta cámara</button>
       <button class="btn btn-sec" onclick="skipCamera()">Sin cámara</button>
     </div>
+  </div>
+</div>
+
+<!-- GALERÍA DE VALIDACIÓN -->
+<div class="modal hidden" id="eventGalleryModal">
+  <div class="gallery-modal-box">
+    <div class="gal-header">
+      <span class="gal-counter" id="galCounter">1 / 0</span>
+      <span class="gal-title" id="galTitle">Revisión de eventos</span>
+      <button class="gal-close" onclick="closeGallery()">✕</button>
+    </div>
+    <div class="gal-image-wrap" id="galImageWrap">
+      <canvas id="galCanvas"></canvas>
+      <div class="gal-no-image hidden" id="galNoImage">📷 Sin imagen capturada</div>
+      <div class="gal-frame-badge" id="galFrameBadge"></div>
+    </div>
+    <div class="gal-thumbs" id="galThumbs"></div>
+    <div class="gal-info" id="galInfo">
+      <div class="gal-badges" id="galBadges"></div>
+      <div class="gal-desc" id="galDesc"></div>
+      <div class="gal-coords" id="galCoords"></div>
+    </div>
+    <div class="gal-actions">
+      <button class="gal-btn gal-confirm" id="galBtnOk" onclick="validateEvent('confirmed')">✅ Correcto</button>
+      <button class="gal-btn gal-correct" id="galBtnEdit" onclick="openTypeCorrector()">✏️ Corregir</button>
+      <button class="gal-btn gal-reject" id="galBtnNo" onclick="validateEvent('discarded')">❌ Falso positivo</button>
+    </div>
+    <div class="gal-nav">
+      <button class="gal-nav-btn" id="galPrev" onclick="galleryNav(-1)">← Anterior</button>
+      <div class="gal-nav-dots" id="galDots"></div>
+      <button class="gal-nav-btn" id="galNext" onclick="galleryNav(1)">Siguiente →</button>
+    </div>
+  </div>
+</div>
+<!-- CORRECTOR DE TIPO -->
+<div class="modal hidden" id="typeCorrectorModal">
+  <div class="modal-box">
+    <h3>✏️ Corregir clasificación</h3>
+    <div class="type-grid" id="typeGrid"></div>
+    <button class="btn btn-sec" style="margin-top:8px;width:100%" onclick="$('typeCorrectorModal').classList.add('hidden')">Cancelar</button>
   </div>
 </div>
 

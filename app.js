@@ -881,6 +881,7 @@ async function startMeasurement(){
   S._manualRecalRequest=false;
   S.buf=[];S.chartZ=[];S.chartI=[];S.hpPrev=0;S.hpPrevIn=0;
   EKG.buf.marks=[];EKG.buf.totalSamples=0;
+  GAL.items=[];GAL.idx=0;GAL.activeFrameIdx=1;
   S.lineMeas?.setLatLngs([]);
 
   if(S.activeModes.has('urban')){
@@ -955,6 +956,12 @@ function stopMeasurement(){
   };
   $('routeNameInput').value='';$('routeNameModal').classList.remove('hidden');
   updateNoiseFilterUI();
+  const galBtn=$('galOpenBtn');
+  if(galBtn){
+    const unvalidated=GAL.items.filter(i=>!i.event.humanLabel).length;
+    galBtn.textContent='📷 Validar eventos ('+unvalidated+' sin validar)';
+    galBtn.style.display=GAL.items.length?'block':'none';
+  }
 }
 function collectComfortData(){
   const cf=S.comfort;
@@ -1888,6 +1895,13 @@ window.addEventListener('load',()=>{
 
 // ─ EKG 3 canales Canvas 2D (Fase 4 v2) ───────────
 const EKG={buf:{marks:[],max:120,totalSamples:0}};
+const GAL={
+  items:[],idx:0,activeFrameIdx:1,
+  img:null,scale:1,minScale:1,maxScale:5,
+  offsetX:0,offsetY:0,
+  _lastTouchDist:null,_lastTouchX:null,_lastTouchY:null,
+  _isDragging:false,_lastTap:0
+};
 function updateAccelViz(ax,ay,az){
   const dot=$('avDot'),zFill=$('avZfill'),zVal=$('avZval');
   if(!dot||!zFill||!S.grav)return;
@@ -2243,6 +2257,242 @@ function captureManualPhoto(){
   S.urbanEvents.push(manualEvent);
   if(typeof analyzeEventWithGemini==='function')analyzeEventWithGemini(manualEvent,blob);
   toast('📷 Foto capturada — analizando…');
+}
+
+// ─ Helpers ────────────────────────────────────
+function blobToBase64(blob){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result.split(',')[1]);
+    r.onerror=rej;
+    r.readAsDataURL(blob);
+  });
+}
+function updateLearningStats(){}
+
+// ─ Galería de validación ──────────────────────
+function addToGallery(event){
+  if(GAL.items.some(i=>i.event.id===event.id))return;
+  GAL.items.push({event});
+}
+function showEventThumbnail(event){
+  const thumb=$('lastEventThumb');if(!thumb)return;
+  const frames=event._frameBlobs||[];
+  const blob=frames[1]?.blob||frames[0]?.blob;
+  if(!blob)return;
+  const url=URL.createObjectURL(blob);
+  thumb.src=url;thumb.style.display='block';
+  const eventIdx=GAL.items.findIndex(i=>i.event.id===event.id);
+  thumb.onclick=()=>openGallery(Math.max(0,eventIdx));
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+function openGallery(startIdx=0){
+  if(!GAL.items.length){toast('Sin eventos con imagen en esta sesión');return;}
+  GAL.idx=Math.min(startIdx,GAL.items.length-1);
+  $('eventGalleryModal').classList.remove('hidden');
+  renderGalleryItem(GAL.idx);
+  initGalleryGestures();
+}
+function closeGallery(){
+  $('eventGalleryModal').classList.add('hidden');
+  GAL.img=null;
+}
+function galleryNav(dir){
+  const newIdx=GAL.idx+dir;
+  if(newIdx<0||newIdx>=GAL.items.length)return;
+  GAL.idx=newIdx;renderGalleryItem(GAL.idx);
+}
+function openEventGallery(){
+  if(!GAL.items.length){toast('Sin eventos con imagen en esta sesión');return;}
+  GAL.items.sort((a,b)=>(a.event.humanLabel?1:0)-(b.event.humanLabel?1:0));
+  openGallery(0);
+}
+function renderGalleryItem(idx){
+  const item=GAL.items[idx];if(!item)return;
+  const{event}=item;
+  set('galCounter',(idx+1)+' / '+GAL.items.length);
+  renderGalleryDots(idx);
+  $('galPrev').disabled=idx===0;
+  $('galNext').disabled=idx===GAL.items.length-1;
+  GAL.scale=1;GAL.offsetX=0;GAL.offsetY=0;
+  GAL.activeFrameIdx=1;
+  const frames=event._frameBlobs||[];
+  const noFrames=frames.length===0;
+  const canvas=$('galCanvas'),wrap=$('galImageWrap'),noImg=$('galNoImage'),
+        thumbs=$('galThumbs'),badge=$('galFrameBadge');
+  if(thumbs){
+    if(noFrames){thumbs.innerHTML='';thumbs.style.display='none';}
+    else{
+      thumbs.style.display='flex';
+      thumbs.innerHTML=frames.map((f,fi)=>{
+        const url=URL.createObjectURL(f.blob);
+        const active=fi===GAL.activeFrameIdx?' active':'';
+        setTimeout(()=>URL.revokeObjectURL(url),60000);
+        return`<div class="gal-thumb-wrap"><img class="gal-thumb${active}" src="${url}" onclick="selectGalleryFrame(${fi})" data-fi="${fi}"><div class="gal-thumb-label">${f.label} ${f.diff<100?'✓':'~'}${f.diff.toFixed(0)}ms</div></div>`;
+      }).join('');
+    }
+  }
+  if(noFrames){
+    canvas.style.display='none';noImg.classList.remove('hidden');
+    if(badge)badge.textContent='';
+  } else {
+    noImg.classList.add('hidden');canvas.style.display='block';
+    loadFrameToCanvas(frames[GAL.activeFrameIdx]?.blob||frames[0]?.blob,
+                      frames[GAL.activeFrameIdx]?.label||'B');
+  }
+  const typeIcons={pothole:'🕳️',manhole:'⭕',speedbump:'⛰️',crack:'〰️',degraded:'🔴',patch:'🔧',unknown:'❓'};
+  const sevColors={leve:'#F59E0B',moderado:'#F97316',grave:'#EF4444'};
+  const icon=typeIcons[event.type]||'❓';
+  const sevColor=sevColors[event.severity]||'#3A5F7A';
+  $('galBadges').innerHTML=[
+    `<span class="gal-badge">${icon} ${event.type||'desconocido'}</span>`,
+    `<span class="gal-badge" style="color:${sevColor}">${event.severity||'—'}</span>`,
+    `<span class="gal-badge">Score: ${event.score?.toFixed(0)||'—'}</span>`,
+    `<span class="gal-badge">${event.speed?.toFixed(0)||'—'} km/h</span>`,
+    `<span class="gal-badge">${frames.length} frame${frames.length!==1?'s':''}</span>`,
+    event.humanLabel
+      ?`<span class="gal-badge ${event.humanLabel}">${event.humanLabel==='confirmed'?'✅':event.humanLabel==='discarded'?'❌':'✏️'} Validado</span>`
+      :'<span class="gal-badge">Sin validar</span>'
+  ].join('');
+  $('galDesc').textContent=event.gemini?.description||'';
+  $('galCoords').textContent=event.lat?`📍 ${event.lat.toFixed(5)}, ${event.lon.toFixed(5)}`:'';
+  const validated=!!event.humanLabel;
+  $('galBtnOk').disabled=validated;$('galBtnEdit').disabled=validated;$('galBtnNo').disabled=validated;
+}
+function selectGalleryFrame(fi){
+  const item=GAL.items[GAL.idx];if(!item)return;
+  const frames=item.event._frameBlobs||[];if(!frames[fi])return;
+  GAL.activeFrameIdx=fi;GAL.scale=1;GAL.offsetX=0;GAL.offsetY=0;
+  document.querySelectorAll('.gal-thumb').forEach((el,i)=>el.classList.toggle('active',i===fi));
+  loadFrameToCanvas(frames[fi].blob,frames[fi].label);
+}
+function loadFrameToCanvas(blob,label){
+  if(!blob)return;
+  const canvas=$('galCanvas'),wrap=$('galImageWrap'),badge=$('galFrameBadge');
+  if(badge)badge.textContent='Frame '+label;
+  const url=URL.createObjectURL(blob);
+  GAL.img=new Image();
+  GAL.img.onload=()=>{
+    URL.revokeObjectURL(url);
+    const wrapRect=wrap.getBoundingClientRect();
+    const imgRatio=GAL.img.width/GAL.img.height;
+    const wrapRatio=wrapRect.width/wrapRect.height;
+    if(imgRatio>wrapRatio){canvas.width=wrapRect.width;canvas.height=wrapRect.width/imgRatio;}
+    else{canvas.height=wrapRect.height;canvas.width=wrapRect.height*imgRatio;}
+    drawGalleryCanvas();
+  };
+  GAL.img.src=url;
+}
+function drawGalleryCanvas(){
+  const canvas=$('galCanvas');if(!canvas||!GAL.img)return;
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.translate(canvas.width/2+GAL.offsetX,canvas.height/2+GAL.offsetY);
+  ctx.scale(GAL.scale,GAL.scale);
+  ctx.drawImage(GAL.img,-GAL.img.width/2,-GAL.img.height/2,GAL.img.width,GAL.img.height);
+  ctx.restore();
+}
+function renderGalleryDots(activeIdx){
+  const container=$('galDots');if(!container)return;
+  const max=Math.min(GAL.items.length,9);
+  const start=Math.max(0,Math.min(activeIdx-4,GAL.items.length-max));
+  container.innerHTML=Array.from({length:max},(_,i)=>{
+    const realIdx=start+i;
+    return`<div class="gal-nav-dot${realIdx===activeIdx?' active':''}"></div>`;
+  }).join('');
+}
+function initGalleryGestures(){
+  const canvas=$('galCanvas');if(!canvas)return;
+  const newCanvas=canvas.cloneNode(true);
+  canvas.parentNode.replaceChild(newCanvas,canvas);
+  const c=$('galCanvas');
+  c.addEventListener('touchstart',e=>{
+    if(e.touches.length===2){GAL._lastTouchDist=getTouchDist(e.touches);}
+    else if(e.touches.length===1){
+      GAL._lastTouchX=e.touches[0].clientX;GAL._lastTouchY=e.touches[0].clientY;GAL._isDragging=true;
+      const now=Date.now();
+      if(now-GAL._lastTap<300){GAL.scale=GAL.scale>1.5?1:3;GAL.offsetX=0;GAL.offsetY=0;drawGalleryCanvas();}
+      GAL._lastTap=now;
+    }
+    e.preventDefault();
+  },{passive:false});
+  c.addEventListener('touchmove',e=>{
+    e.preventDefault();
+    if(e.touches.length===2){
+      const dist=getTouchDist(e.touches);
+      if(GAL._lastTouchDist){
+        GAL.scale=Math.max(GAL.minScale,Math.min(GAL.maxScale,GAL.scale*(dist/GAL._lastTouchDist)));
+        drawGalleryCanvas();
+      }
+      GAL._lastTouchDist=dist;
+    } else if(e.touches.length===1&&GAL._isDragging&&GAL.scale>1){
+      const dx=e.touches[0].clientX-(GAL._lastTouchX||0);
+      const dy=e.touches[0].clientY-(GAL._lastTouchY||0);
+      const cv=$('galCanvas');
+      const maxOff=(cv.width*(GAL.scale-1))/2;
+      GAL.offsetX=Math.max(-maxOff,Math.min(maxOff,GAL.offsetX+dx));
+      GAL.offsetY=Math.max(-maxOff,Math.min(maxOff,GAL.offsetY+dy));
+      GAL._lastTouchX=e.touches[0].clientX;GAL._lastTouchY=e.touches[0].clientY;
+      drawGalleryCanvas();
+    }
+  },{passive:false});
+  c.addEventListener('touchend',e=>{
+    if(e.touches.length<2)GAL._lastTouchDist=null;
+    if(e.touches.length===0)GAL._isDragging=false;
+  });
+}
+function getTouchDist(touches){
+  const dx=touches[0].clientX-touches[1].clientX;
+  const dy=touches[0].clientY-touches[1].clientY;
+  return Math.sqrt(dx*dx+dy*dy);
+}
+function validateEvent(label){
+  const item=GAL.items[GAL.idx];if(!item)return;
+  const{event}=item;
+  event.humanLabel=label;event.humanTs=Date.now();
+  renderGalleryItem(GAL.idx);
+  saveToTrainingDataset(event,event._frameBlob,label);
+  const stored=S.urbanEvents.find(e=>e.id===event.id);
+  if(stored){stored.humanLabel=label;stored.humanTs=Date.now();}
+  if(label==='discarded')S.urbanEvents=S.urbanEvents.filter(e=>e.id!==event.id);
+  const nextUnvalidated=GAL.items.findIndex((it,i)=>i>GAL.idx&&!it.event.humanLabel);
+  if(nextUnvalidated!==-1){setTimeout(()=>galleryNav(nextUnvalidated-GAL.idx),300);}
+  else toast('✅ Sesión validada — '+GAL.items.filter(i=>i.event.humanLabel).length+' eventos');
+  updateLearningStats(event,label==='discarded'?'human_discarded':'human_confirmed');
+}
+function openTypeCorrector(){
+  const item=GAL.items[GAL.idx];if(!item)return;
+  const types=[
+    {key:'pothole',label:'🕳️ Bache'},{key:'manhole',label:'⭕ Tapa registro'},
+    {key:'speedbump',label:'⛰️ Badén'},{key:'crack',label:'〰️ Grieta'},
+    {key:'degraded',label:'🔴 Pavimento degradado'},{key:'patch',label:'🔧 Parche'}
+  ];
+  $('typeGrid').innerHTML=types.map(t=>`<button class="type-btn" onclick="correctEventType('${t.key}')">${t.label}</button>`).join('');
+  $('typeCorrectorModal').classList.remove('hidden');
+}
+function correctEventType(type){
+  const item=GAL.items[GAL.idx];if(!item)return;
+  item.event.type=type;item.event.humanLabel='corrected';item.event.humanTs=Date.now();
+  $('typeCorrectorModal').classList.add('hidden');
+  renderGalleryItem(GAL.idx);
+  saveToTrainingDataset(item.event,item.event._frameBlob,'corrected');
+  toast('✏️ Tipo corregido: '+type);
+}
+async function saveToTrainingDataset(event,frameBlob,humanLabel){
+  try{
+    const dataset=JSON.parse(localStorage.getItem('rc_training_dataset')||'[]');
+    const entry={
+      id:event.id,ts:event.ts,type:event.type,severity:event.severity,
+      score:event.score,speed:event.speed,lat:event.lat,lon:event.lon,
+      features:event.features,geminiResult:event.gemini||null,
+      humanLabel,humanTs:Date.now(),hasImage:!!frameBlob
+    };
+    const existing=dataset.findIndex(e=>e.id===event.id);
+    if(existing>=0)dataset[existing]=entry;else dataset.push(entry);
+    if(dataset.length>1000)dataset.splice(0,dataset.length-1000);
+    localStorage.setItem('rc_training_dataset',JSON.stringify(dataset));
+  }catch(e){log('[Dataset] Error guardando: '+e.message);}
 }
 
 // ─ Red colaborativa (Fase 7) ──────────────────
