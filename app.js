@@ -2143,6 +2143,7 @@ function updateUrbanMeasPanel(){
 const VIDEO_BUF={stream:null,video:null,canvas:null,ctx:null,frames:[],maxAgeMs:3000,capturing:false,captureInterval:null};
 
 async function initCameraSelector(){
+  toast('[CS] iniciando...');
   try{
     let devices=await navigator.mediaDevices.enumerateDevices();
     let videoDevices=devices.filter(d=>d.kind==='videoinput');
@@ -2210,6 +2211,7 @@ function skipCamera(){
 }
 
 async function startVideoBuffer(){
+  toast('[VB] iniciando...');
   if(VIDEO_BUF.capturing){
     log('[Video] Ya capturando — reiniciando');
     stopVideoBuffer();
