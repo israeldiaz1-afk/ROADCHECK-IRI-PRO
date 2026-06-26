@@ -2143,44 +2143,8 @@ function updateUrbanMeasPanel(){
 const VIDEO_BUF={stream:null,video:null,canvas:null,ctx:null,frames:[],maxAgeMs:3000,capturing:false,captureInterval:null};
 
 async function initCameraSelector(){
-  toast('[CS] iniciando...');
-  try{
-    let devices=await navigator.mediaDevices.enumerateDevices();
-    let videoDevices=devices.filter(d=>d.kind==='videoinput');
-    if(videoDevices.every(d=>!d.label)){
-      const tmp=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
-      tmp.getTracks().forEach(t=>t.stop());
-      devices=await navigator.mediaDevices.enumerateDevices();
-      videoDevices=devices.filter(d=>d.kind==='videoinput');
-    }
-    const externalCams=videoDevices.filter(d=>{
-      const lbl=(d.label||'').toLowerCase();
-      return!lbl.includes('facing')&&!lbl.includes('camera2')&&
-             !lbl.includes('built-in')&&!lbl.includes('back')&&!lbl.includes('front')&&
-             !lbl.includes('cámara')&&!lbl.match(/camera\s*\d/);
-    });
-    log('[CAM] total='+videoDevices.length+' external='+externalCams.length);
-    S._lastExternalCams=externalCams;
-    const camChip=$('cCAM');
-    if(camChip){
-      camChip.classList.toggle('hidden',externalCams.length===0);
-      if(externalCams.length>0)$('dCAM').style.background='#10B981';
-    }
-    if(externalCams.length===0){
-      S.selectedCameraId=null;
-      startVideoBuffer();
-      return;
-    }
-    const opts=[
-      ...externalCams.map(d=>({deviceId:d.deviceId,label:'🔌 '+(d.label||'Cámara externa')})),
-      {deviceId:'__builtin__',label:'📱 Cámara trasera del móvil'}
-    ];
-    showCameraSelector(opts);
-  }catch(e){
-    log('[Cámara] initCameraSelector error: '+e.message);
-    S.selectedCameraId=null;
-    startVideoBuffer();
-  }
+  S.selectedCameraId=null;
+  await startVideoBuffer();
 }
 function openCameraSelector(){
   if(!S._lastExternalCams?.length)return;
@@ -2211,40 +2175,31 @@ function skipCamera(){
 }
 
 async function startVideoBuffer(){
-  toast('[VB] iniciando...');
-  if(VIDEO_BUF.capturing){
-    log('[Video] Ya capturando — reiniciando');
-    stopVideoBuffer();
-  }
+  if(VIDEO_BUF.capturing) stopVideoBuffer();
   try{
-    const constraints={
-      video:S.selectedCameraId
-        ?{deviceId:{exact:S.selectedCameraId},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}}
-        :{facingMode:'environment',width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30}},
-      audio:false
-    };
-    VIDEO_BUF.stream=await navigator.mediaDevices.getUserMedia(constraints);
-    VIDEO_BUF.video=document.createElement('video');
-    VIDEO_BUF.video.srcObject=VIDEO_BUF.stream;
-    VIDEO_BUF.video.playsInline=true;
-    VIDEO_BUF.video.muted=true;
-    await VIDEO_BUF.video.play();
+    VIDEO_BUF.stream=await navigator.mediaDevices
+      .getUserMedia({
+        video:{facingMode:'environment',
+               width:{ideal:1280},height:{ideal:720}},
+        audio:false
+      });
     if(!VIDEO_BUF.canvas){
       VIDEO_BUF.canvas=document.createElement('canvas');
     }
     VIDEO_BUF.canvas.width=1280;
     VIDEO_BUF.canvas.height=720;
     VIDEO_BUF.ctx=VIDEO_BUF.canvas.getContext('2d');
+    VIDEO_BUF.video=document.createElement('video');
+    VIDEO_BUF.video.srcObject=VIDEO_BUF.stream;
+    VIDEO_BUF.video.playsInline=true;
+    VIDEO_BUF.video.muted=true;
+    await VIDEO_BUF.video.play();
     VIDEO_BUF.captureInterval=setInterval(captureFrame,250);
     VIDEO_BUF.capturing=true;
-    log('[Video] Buffer activo — '+VIDEO_BUF.canvas.width+'x'+VIDEO_BUF.canvas.height);
     toast('📷 Cámara activa');
-    const btn=$('btnPhoto');if(btn)btn.classList.remove('hidden');
-    console.log('[Cámara] Buffer de vídeo activo');
   }catch(e){
-    log('[Video] Error getUserMedia: '+e.message+
-        ' | name:'+e.name);
-    toast('⚠️ Cámara: '+e.name+' — '+e.message);
+    toast('⚠️ Sin cámara: '+e.name);
+    VIDEO_BUF.capturing=false;
   }
 }
 
