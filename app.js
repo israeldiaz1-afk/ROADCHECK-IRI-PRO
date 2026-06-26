@@ -570,20 +570,14 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
       console.log('[GPS] Snapping: '+snapped.snapDist.toFixed(1)+'m → calzada');
     }
   });
-  event._frameBlobs=extractFramesForEvent(event.ts,event.speed||0);
-  event._frameBlob=event._frameBlobs[1]?.blob||event._frameBlobs[0]?.blob;
-  log('[Frames] Capturados '+event._frameBlobs.length+' frames para evento '+event.id);
-  addToGallery(event);
-  if(event._frameBlob){showEventThumbnail(event);analyzeEventWithGemini(event,event._frameBlob);}
-  else console.log('[Gemini] Sin frame disponible para este evento');
   const frames=extractFramesForEvent(event.ts,event.speed||0);
   event._frameBlobs=frames;
   event._frameBlob=frames[1]?.blob||frames[0]?.blob;
   if(frames.length>0){
     addToGallery(event);
     showEventThumbnail(event);
-    log('[Gallery] Evento añadido con '+frames.length+' frames');
   }
+  log('[Evento] frames='+frames.length+' buf='+VIDEO_BUF.frames.length);
 }
 function showIOSPerm(){$('sensorPermModal')?.classList.remove('hidden');}
 function grantIOS(){$('sensorPermModal')?.classList.add('hidden');DeviceMotionEvent.requestPermission().then(s=>{if(s==='granted'){S.sensorOK=true;$('btnIOS')?.classList.add('hidden');tryAccel();startCal();toast('Permiso concedido');}else toast('Permiso denegado');});}
@@ -2214,17 +2208,26 @@ async function startVideoBuffer(){
 }
 
 function captureFrame(){
-  if(!VIDEO_BUF.ctx||!VIDEO_BUF.video)return;
+  if(!VIDEO_BUF.video||VIDEO_BUF.video.readyState<2)return;
+  if(!VIDEO_BUF.ctx||!VIDEO_BUF.canvas)return;
   try{
-    VIDEO_BUF.ctx.drawImage(VIDEO_BUF.video,0,0,1280,720);
+    VIDEO_BUF.ctx.drawImage(
+      VIDEO_BUF.video,0,0,
+      VIDEO_BUF.canvas.width,
+      VIDEO_BUF.canvas.height
+    );
     VIDEO_BUF.canvas.toBlob(blob=>{
       if(!blob)return;
       const ts=Date.now();
       VIDEO_BUF.frames.push({ts,blob});
       const cutoff=ts-VIDEO_BUF.maxAgeMs;
-      while(VIDEO_BUF.frames.length>0&&VIDEO_BUF.frames[0].ts<cutoff)VIDEO_BUF.frames.shift();
-    },'image/jpeg',0.85);
-  }catch(e){}
+      while(VIDEO_BUF.frames.length>0&&
+            VIDEO_BUF.frames[0].ts<cutoff)
+        VIDEO_BUF.frames.shift();
+    },'image/jpeg',0.80);
+  }catch(e){
+    console.error('[captureFrame]',e.message);
+  }
 }
 
 function stopVideoBuffer(){
