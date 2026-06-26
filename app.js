@@ -928,6 +928,16 @@ async function startMeasurement(){
   ['aMax','aMed','aMin'].forEach(id=>set(id,'—'));set('aSegs','0');
   $('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');
   startTimer();
+  try {
+    navigator.mediaDevices.getUserMedia({video:true,audio:false})
+      .then(s => {
+        toast('✅ Cámara OK: '+s.getVideoTracks()[0].label);
+        s.getTracks().forEach(t=>t.stop());
+      })
+      .catch(e => toast('❌ Cámara error: '+e.name));
+  } catch(e) {
+    toast('❌ Excepción: '+e.message);
+  }
 }
 function pauseMeasurement(){S.paused=true;$('btnPause').classList.add('hidden');$('btnResume').classList.remove('hidden');toast('⏸ Pausado');}
 function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');toast('▶ Reanudado');}
