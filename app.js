@@ -212,7 +212,24 @@ function flushUI(){
 }
 function allVeh(){return[...VEHICLES,...JSON.parse(localStorage.getItem('rc_cveh')||'[]')];}
 function allRoutes(){try{return JSON.parse(localStorage.getItem('rc_routes')||'[]');}catch(e){return[];}}
-function saveRoute(r){try{const rs=allRoutes();rs.push(r);localStorage.setItem('rc_routes',JSON.stringify(rs));}catch(e){toast('Error guardando');}}
+function saveRoute(r){
+  try{
+    const clean=JSON.parse(JSON.stringify(r,
+      (key,val)=>{
+        if(key==='_frameBlobs'||
+           key==='_frameBlob'||
+           key==='_clipBlobs') return undefined;
+        return val;
+      }
+    ));
+    const rs=allRoutes();
+    rs.push(clean);
+    localStorage.setItem('rc_routes',JSON.stringify(rs));
+  }catch(e){
+    console.error('[saveRoute]',e.message);
+    toast('⚠️ Error guardando: '+e.message);
+  }
+}
 function delRoute(id){localStorage.setItem('rc_routes',JSON.stringify(allRoutes().filter(r=>r.id!==id)));}
 function clearRoutes(){localStorage.removeItem('rc_routes');}
 
@@ -972,6 +989,9 @@ function stopMeasurement(){
     vehicleId:iriData?.vehicleId||null,
     iriData,urbanData,comfortData
   };
+  console.log('[Stop] GAL.items='+GAL.items.length+
+    ' urbanEvents='+S.urbanEvents.length+
+    ' pendingRoute='+!!S.pendingRoute);
   showValidateModal();
 }
 function showValidateModal(){
