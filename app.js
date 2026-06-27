@@ -47,6 +47,7 @@ const S={
   _sessionStart:0,
   _recentUrbanEvent:false,
   _manualRecalRequest:false,
+  autoRecalEnabled:true,
   adaptiveCal:{
     active:false,gravBuf:[],gravBufMax:180,
     lastUpdate:0,updateCount:0,driftDeg:0,
@@ -969,9 +970,27 @@ function stopMeasurement(){
     vehicleId:iriData?.vehicleId||null,
     iriData,urbanData,comfortData
   };
-  $('routeNameInput').value='';$('routeNameModal').classList.remove('hidden');
+  showValidateModal();
+}
+function showValidateModal(){
+  const n=GAL.items.length;
+  if(n===0){showRouteNameModal();return;}
+  set('vnCount',n.toString());
+  $('validateNowModal').classList.remove('hidden');
+}
+function validateNow(){
+  $('validateNowModal').classList.add('hidden');
+  openEventGallery();
+}
+function validateLater(){
+  $('validateNowModal').classList.add('hidden');
+  showRouteNameModal();
+}
+function showRouteNameModal(){
+  $('routeNameInput').value='';
+  $('routeNameModal').classList.remove('hidden');
+  updateNoiseFilterUI();
   const galBtn=$('galOpenBtn');
-  console.log('[GAL] items al parar='+GAL.items.length);
   if(galBtn){
     const n=GAL.items.length;
     galBtn.textContent='📷 Validar eventos'+(n>0?' ('+n+')':'');
@@ -2003,8 +2022,15 @@ function registerChartMark(color,source){
 }
 
 // ─ Calibración adaptativa A3 ──────────────────
+function toggleAutoRecal(){
+  S.autoRecalEnabled=!S.autoRecalEnabled;
+  set('autoRecalVal',S.autoRecalEnabled?'Activada':'Desactivada');
+  $('btnAutoRecal').style.opacity=S.autoRecalEnabled?'1':'0.5';
+  toast(S.autoRecalEnabled?'🔄 Recalibración automática activada':'⏸ Recalibración automática desactivada');
+}
 function feedAdaptiveCalibration(x,y,z,timestamp){
   if(!S.calibrated||!S.grav)return;
+  if(!S.autoRecalEnabled&&!S._manualRecalRequest)return;
   const speed=S.lastPos?.speed||0;
   const stopped=speed<2;
   if(stopped){
