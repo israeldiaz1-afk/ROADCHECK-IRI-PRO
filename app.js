@@ -577,7 +577,7 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
     addToGallery(event);
     showEventThumbnail(event);
   }
-  log('[Evento] frames='+frames.length+' buf='+VIDEO_BUF.frames.length);
+  console.log('[Evento] frames='+frames.length+' buf='+VIDEO_BUF.frames.length);
 }
 function showIOSPerm(){$('sensorPermModal')?.classList.remove('hidden');}
 function grantIOS(){$('sensorPermModal')?.classList.add('hidden');DeviceMotionEvent.requestPermission().then(s=>{if(s==='granted'){S.sensorOK=true;$('btnIOS')?.classList.add('hidden');tryAccel();startCal();toast('Permiso concedido');}else toast('Permiso denegado');});}
@@ -911,7 +911,7 @@ async function startMeasurement(){
   }
 
   if(S.activeModes.has('urban')||S.activeModes.has('comfort')){
-    initCameraSelector().catch(e=>log('[Cámara] Error en inicio: '+e.message));
+    initCameraSelector().catch(e=>console.log('[Cámara] Error en inicio: '+e.message));
   }
   $('meas-sc').classList.remove('hidden');
   updateMeasPanel();
@@ -1015,7 +1015,7 @@ function applyPostProcessNoise(){
   if(discarded>0){
     S.noiseFilter.appliedPost=true;
     toast('🧹 Post-procesado: '+discarded+' evento'+(discarded>1?'s':'')+' de ruido eliminado'+(discarded>1?'s':''));
-    log('[Ruido] Percentil 15='+S.noiseFilter.percentile15.toFixed(3)+' · Umbral='+noiseThreshold.toFixed(3)+' · Descartados='+discarded);
+    console.log('[Ruido] Percentil 15='+S.noiseFilter.percentile15.toFixed(3)+' · Umbral='+noiseThreshold.toFixed(3)+' · Descartados='+discarded);
   }
 }
 function updateNoiseFilterUI(){
@@ -2037,7 +2037,7 @@ function feedAdaptiveCalibration(x,y,z,timestamp){
   if(S.comfort?.avBaseline!==undefined){
     S.comfort.avBaseline=Math.max(0,S.comfort.avLive||0)*0.5;
   }
-  log('[CalAdaptiva] Recalibrado en parada · deriva='+driftDeg.toFixed(2)+'° · ×'+S.adaptiveCal.updateCount);
+  console.log('[CalAdaptiva] Recalibrado en parada · deriva='+driftDeg.toFixed(2)+'° · ×'+S.adaptiveCal.updateCount);
   queueUI('adaptiveCal',updateAdaptiveCalUI);
 }
 function requestManualRecal(){
@@ -2269,7 +2269,7 @@ function calcFrameDelay(speedKmh){
   return Math.min(analysisMs+(cameraOffsetM/speedMs)*1000,VIDEO_BUF.maxAgeMs*0.85);
 }
 function extractFramesForEvent(eventTs,speedKmh){
-  if(!VIDEO_BUF.frames.length){log('[Frames] Sin frames en buffer');return[];}
+  if(!VIDEO_BUF.frames.length){console.log('[Frames] Sin frames en buffer');return[];}
   const D=calcFrameDelay(speedKmh);
   const targets=[
     {label:'A',ts:eventTs-(D+200)},
@@ -2280,7 +2280,7 @@ function extractFramesForEvent(eventTs,speedKmh){
     let best=null,bestDiff=Infinity;
     VIDEO_BUF.frames.forEach(f=>{const d=Math.abs(f.ts-t.ts);if(d<bestDiff){best=f;bestDiff=d;}});
     const valid=best&&bestDiff<800;
-    log('[Frame '+t.label+'] diff='+bestDiff.toFixed(0)+'ms '+(valid?'✓':'✗'));
+    console.log('[Frame '+t.label+'] diff='+bestDiff.toFixed(0)+'ms '+(valid?'✓':'✗'));
     return valid?{blob:best.blob,label:t.label,diff:bestDiff}:null;
   }).filter(Boolean);
   const seen=new Set();
@@ -2544,7 +2544,7 @@ async function saveToTrainingDataset(event,frameBlob,humanLabel){
     if(existing>=0)dataset[existing]=entry;else dataset.push(entry);
     if(dataset.length>1000)dataset.splice(0,dataset.length-1000);
     localStorage.setItem('rc_training_dataset',JSON.stringify(dataset));
-  }catch(e){log('[Dataset] Error guardando: '+e.message);}
+  }catch(e){console.log('[Dataset] Error guardando: '+e.message);}
 }
 
 // ─ Red colaborativa (Fase 7) ──────────────────
