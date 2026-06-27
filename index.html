@@ -506,7 +506,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
         <button class="act-btn" onclick="openSegModal()"><span class="a-ico">📏</span><div class="a-inf"><span class="a-lbl">Tramo</span><span class="a-val" id="segVal">100 m</span></div></button>
         <button class="act-btn" onclick="openSpeedModal()"><span class="a-ico">⚡</span><div class="a-inf"><span class="a-lbl">Vel. referencia</span><span class="a-val" id="vrefVal">80 km/h</span></div></button>
         <button class="act-btn" id="btnCal" onclick="doCalibrate()"><span class="a-ico" id="calIco">🎯</span><div class="a-inf"><span class="a-lbl" id="calLbl">Calibrar sensor</span><span class="a-val" id="calVal" style="color:var(--bad)">Pulsa para calibrar</span></div></button>
-        <button class="act-btn" id="btnAutoRecal" onclick="toggleAutoRecal()">🔄 Recal. automática · <span id="autoRecalVal">Activada</span></button>
+        <button class="act-btn" id="btnAutoRecal" onclick="toggleAutoRecal()" style="opacity:1;color:var(--txt)">🔄 Recal. automática · <span id="autoRecalVal">Activada</span></button>
       </div>
 
       <button id="btnIOS" class="btn btn-sky hidden" style="width:100%" onclick="showIOSPerm()">🔑 Permiso sensor (iOS)</button>
