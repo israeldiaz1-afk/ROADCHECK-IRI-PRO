@@ -964,8 +964,20 @@ function stopMeasurement(){
   let iriData=null,urbanData=null,comfortData=null;
 
   if(S.activeModes.has('urban')){
-    if(S.urbanEvents.length>0){mergeEventsIntoStorage(S.urbanEvents);urbanData={events:[...S.urbanEvents]};}
-    if(S.groundTruth&&S.groundTruth.length>0)showValidationResults();
+    // Crear urbanData aunque events esté vacío
+    // para que la sesión siempre se guarde
+    const eventsClean=S.urbanEvents.map(
+      ({_frameBlobs,_frameBlob,_clipBlobs,...e})=>e
+    );
+    urbanData={
+      events:eventsClean,
+      count:eventsClean.length
+    };
+    if(eventsClean.length>0){
+      mergeEventsIntoStorage(eventsClean);
+    }
+    if(S.groundTruth&&S.groundTruth.length>0)
+      showValidationResults();
   }
   if(S.activeModes.has('comfort')){
     comfortData=collectComfortData();
@@ -975,7 +987,14 @@ function stopMeasurement(){
     iriData={segs,avgC:allC.reduce((a,b)=>a+b,0)/allC.length,avgM:allM.reduce((a,b)=>a+b,0)/allM.length,vehicleId:S.vehicleId};
   }
 
-  if(!iriData&&!urbanData&&!comfortData){toast('Sin datos suficientes');return;}
+  if(!iriData&&!urbanData&&!comfortData){
+    // En modo urbano siempre hay urbanData aunque
+    // no haya eventos — guardar igualmente
+    if(!S.activeModes.has('urban')){
+      toast('Sin datos suficientes');return;
+    }
+    urbanData={events:[],count:0};
+  }
 
   const pts=S.activeModes.has('iri')?S.pts:(S.comfort.pts||[]);
   S.pendingRoute={
