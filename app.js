@@ -587,7 +587,6 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
   snapToRoad(pos.lat,pos.lon).then(snapped=>{
     if(snapped.snapped){
       event.lat=snapped.lat;event.lon=snapped.lon;event.snapDist=snapped.snapDist;
-      console.log('[GPS] Snapping: '+snapped.snapDist.toFixed(1)+'m → calzada');
     }
   });
   const frames=VIDEO_BUF.capturing
@@ -598,9 +597,6 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
   // Añadir SIEMPRE a galería independientemente de frames
   addToGallery(event);
   if(frames.length>0) showEventThumbnail(event);
-  console.log('[Evento] frames='+frames.length+
-    ' buf='+VIDEO_BUF.frames.length+
-    ' gal='+GAL.items.length);
 }
 function showIOSPerm(){$('sensorPermModal')?.classList.remove('hidden');}
 function grantIOS(){$('sensorPermModal')?.classList.add('hidden');DeviceMotionEvent.requestPermission().then(s=>{if(s==='granted'){S.sensorOK=true;$('btnIOS')?.classList.add('hidden');tryAccel();startCal();toast('Permiso concedido');}else toast('Permiso denegado');});}
@@ -906,7 +902,7 @@ async function startMeasurement(){
   S._manualRecalRequest=false;
   S.buf=[];S.chartZ=[];S.chartI=[];S.hpPrev=0;S.hpPrevIn=0;
   EKG.buf.marks=[];EKG.buf.totalSamples=0;
-  GAL.items=[];GAL.idx=0;GAL.activeFrameIdx=1;
+  GAL.items=[];GAL.idx=0;GAL.activeFrameIdx=1;VIDEO_BUF.frames=[];
   S.lineMeas?.setLatLngs([]);
 
   if(S.activeModes.has('urban')){
@@ -989,9 +985,6 @@ function stopMeasurement(){
     vehicleId:iriData?.vehicleId||null,
     iriData,urbanData,comfortData
   };
-  console.log('[Stop] GAL.items='+GAL.items.length+
-    ' urbanEvents='+S.urbanEvents.length+
-    ' pendingRoute='+!!S.pendingRoute);
   showValidateModal();
 }
 function showValidateModal(){
@@ -2317,11 +2310,10 @@ function captureFrame(){
 }
 
 function stopVideoBuffer(){
-  if(VIDEO_BUF.captureInterval)clearInterval(VIDEO_BUF.captureInterval);
+  if(VIDEO_BUF.captureInterval){clearInterval(VIDEO_BUF.captureInterval);VIDEO_BUF.captureInterval=null;}
   if(VIDEO_BUF.stream)VIDEO_BUF.stream.getTracks().forEach(t=>t.stop());
   VIDEO_BUF.capturing=false;VIDEO_BUF.frames=[];VIDEO_BUF.stream=null;VIDEO_BUF.video=null;
   const btn=$('btnPhoto');if(btn)btn.classList.add('hidden');
-  console.log('[Cámara] Buffer detenido');
 }
 
 function calcFrameDelay(speedKmh){
@@ -2331,7 +2323,7 @@ function calcFrameDelay(speedKmh){
   return Math.min(analysisMs+(cameraOffsetM/speedMs)*1000,VIDEO_BUF.maxAgeMs*0.85);
 }
 function extractFramesForEvent(eventTs,speedKmh){
-  if(!VIDEO_BUF.frames.length){console.log('[Frames] Sin frames en buffer');return[];}
+  if(!VIDEO_BUF.frames.length){return[];}
   const D=calcFrameDelay(speedKmh);
   const targets=[
     {label:'A',ts:eventTs-(D+400)},
@@ -2342,7 +2334,6 @@ function extractFramesForEvent(eventTs,speedKmh){
     let best=null,bestDiff=Infinity;
     VIDEO_BUF.frames.forEach(f=>{const d=Math.abs(f.ts-t.ts);if(d<bestDiff){best=f;bestDiff=d;}});
     const valid=best&&bestDiff<800;
-    console.log('[Frame '+t.label+'] diff='+bestDiff.toFixed(0)+'ms '+(valid?'✓':'✗'));
     return valid?{blob:best.blob,label:t.label,diff:bestDiff}:null;
   }).filter(Boolean);
   const seen=new Set();
@@ -2417,7 +2408,6 @@ function galleryNav(dir){
   GAL.idx=newIdx;renderGalleryItem(GAL.idx);
 }
 function openEventGallery(){
-  console.log('[GAL] openEventGallery items='+GAL.items.length);
   if(!GAL.items.length){
     toast('Sin eventos registrados en esta sesión');
     return;
