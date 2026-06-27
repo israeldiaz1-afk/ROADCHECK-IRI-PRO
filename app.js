@@ -570,14 +570,17 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
       console.log('[GPS] Snapping: '+snapped.snapDist.toFixed(1)+'m → calzada');
     }
   });
-  const frames=extractFramesForEvent(event.ts,event.speed||0);
+  const frames=VIDEO_BUF.capturing
+    ? extractFramesForEvent(event.ts,event.speed||0)
+    : [];
   event._frameBlobs=frames;
   event._frameBlob=frames[1]?.blob||frames[0]?.blob;
-  if(frames.length>0){
-    addToGallery(event);
-    showEventThumbnail(event);
-  }
-  console.log('[Evento] frames='+frames.length+' buf='+VIDEO_BUF.frames.length);
+  // Añadir SIEMPRE a galería independientemente de frames
+  addToGallery(event);
+  if(frames.length>0) showEventThumbnail(event);
+  console.log('[Evento] frames='+frames.length+
+    ' buf='+VIDEO_BUF.frames.length+
+    ' gal='+GAL.items.length);
 }
 function showIOSPerm(){$('sensorPermModal')?.classList.remove('hidden');}
 function grantIOS(){$('sensorPermModal')?.classList.add('hidden');DeviceMotionEvent.requestPermission().then(s=>{if(s==='granted'){S.sensorOK=true;$('btnIOS')?.classList.add('hidden');tryAccel();startCal();toast('Permiso concedido');}else toast('Permiso denegado');});}
