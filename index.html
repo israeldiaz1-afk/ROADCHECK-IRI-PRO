@@ -443,6 +443,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .av-zcenter{position:absolute;top:50%;left:0;right:0;height:2px;background:rgba(14,165,233,.25);transform:translateY(-50%);}
 .av-zval{font-size:.62rem;color:var(--dim);font-family:var(--mono);}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/vconsole@3.15.0/dist/vconsole.min.js"></script>
 </head>
 <body>
 <div class="app">
@@ -739,5 +740,6 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
   if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();window._pwa=e;});
 </script>
+<script>window._vc = new VConsole();</script>
 </body>
 </html>
