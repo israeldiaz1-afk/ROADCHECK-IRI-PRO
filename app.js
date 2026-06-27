@@ -2183,26 +2183,50 @@ async function startVideoBuffer(){
   try{
     VIDEO_BUF.stream=await navigator.mediaDevices
       .getUserMedia({
-        video:{facingMode:'environment',
-               width:{ideal:1280},height:{ideal:720}},
+        video:{facingMode:'environment'},
         audio:false
       });
     if(!VIDEO_BUF.canvas){
       VIDEO_BUF.canvas=document.createElement('canvas');
     }
-    VIDEO_BUF.canvas.width=1280;
-    VIDEO_BUF.canvas.height=720;
+    VIDEO_BUF.canvas.width=640;
+    VIDEO_BUF.canvas.height=480;
     VIDEO_BUF.ctx=VIDEO_BUF.canvas.getContext('2d');
     VIDEO_BUF.video=document.createElement('video');
     VIDEO_BUF.video.srcObject=VIDEO_BUF.stream;
     VIDEO_BUF.video.playsInline=true;
     VIDEO_BUF.video.muted=true;
-    await VIDEO_BUF.video.play();
-    VIDEO_BUF.captureInterval=setInterval(captureFrame,250);
+    VIDEO_BUF.video.setAttribute('playsinline','');
+    // Esperar a que el video esté listo antes de capturar
+    await new Promise((resolve,reject)=>{
+      VIDEO_BUF.video.oncanplay=resolve;
+      VIDEO_BUF.video.onerror=reject;
+      setTimeout(reject,5000); // timeout 5s
+      VIDEO_BUF.video.play().catch(reject);
+    });
+    VIDEO_BUF.captureInterval=setInterval(()=>{
+      if(!VIDEO_BUF.video||
+         VIDEO_BUF.video.readyState<2||
+         VIDEO_BUF.video.paused) return;
+      try{
+        VIDEO_BUF.ctx.drawImage(
+          VIDEO_BUF.video,0,0,640,480);
+        VIDEO_BUF.canvas.toBlob(blob=>{
+          if(!blob)return;
+          const ts=Date.now();
+          VIDEO_BUF.frames.push({ts,blob});
+          const cutoff=ts-VIDEO_BUF.maxAgeMs;
+          while(VIDEO_BUF.frames.length>0&&
+                VIDEO_BUF.frames[0].ts<cutoff)
+            VIDEO_BUF.frames.shift();
+        },'image/jpeg',0.75);
+      }catch(e){}
+    },250);
     VIDEO_BUF.capturing=true;
-    toast('📷 Cámara activa');
+    toast('📷 Cámara lista — '+
+          VIDEO_BUF.stream.getVideoTracks()[0].label);
   }catch(e){
-    toast('⚠️ Sin cámara: '+e.name);
+    toast('⚠️ Cámara no disponible: '+e.name);
     VIDEO_BUF.capturing=false;
   }
 }
