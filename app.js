@@ -971,10 +971,11 @@ function stopMeasurement(){
   };
   $('routeNameInput').value='';$('routeNameModal').classList.remove('hidden');
   const galBtn=$('galOpenBtn');
+  console.log('[GAL] items al parar='+GAL.items.length);
   if(galBtn){
-    const unvalidated=GAL.items.filter(i=>!i.event.humanLabel).length;
-    galBtn.textContent='📷 Validar eventos ('+unvalidated+' sin validar)';
-    galBtn.style.display=GAL.items.length?'block':'none';
+    const n=GAL.items.length;
+    galBtn.textContent='📷 Validar eventos'+(n>0?' ('+n+')':'');
+    galBtn.style.display=n>0?'block':'none';
   }
 }
 function collectComfortData(){
@@ -1366,8 +1367,12 @@ async function expHTMLUrban(r){
   const moderados=events.filter(e=>e.severity==='moderado').length;
   const validated=events.filter(e=>e.humanLabel).length;
   const eventsWithImages=await Promise.all(events.map(async e=>{
-    const blob=e._frameBlobs?.[1]?.blob||e._frameBlobs?.[0]?.blob||null;
-    const imgB64=blob?await blobToBase64(blob):null;
+    const blob=e._frameBlobs?.[0]?.blob||
+               e._frameBlobs?.[1]?.blob||
+               e._frameBlobs?.[2]?.blob||
+               e._frameBlob||null;
+    if(!(blob instanceof Blob)) return null;
+    const imgB64=await blobToBase64(blob);
     return{...e,imgB64};
   }));
   const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Informe Urbano — Pavement Check</title>
@@ -2275,9 +2280,9 @@ function extractFramesForEvent(eventTs,speedKmh){
   if(!VIDEO_BUF.frames.length){console.log('[Frames] Sin frames en buffer');return[];}
   const D=calcFrameDelay(speedKmh);
   const targets=[
-    {label:'A',ts:eventTs-(D+200)},
-    {label:'B',ts:eventTs-D},
-    {label:'C',ts:eventTs-(D-200)}
+    {label:'A',ts:eventTs-(D+400)},
+    {label:'B',ts:eventTs-(D+200)},
+    {label:'C',ts:eventTs-D}
   ];
   const results=targets.map(t=>{
     let best=null,bestDiff=Infinity;
@@ -2358,7 +2363,11 @@ function galleryNav(dir){
   GAL.idx=newIdx;renderGalleryItem(GAL.idx);
 }
 function openEventGallery(){
-  if(!GAL.items.length){toast('Sin eventos con imagen en esta sesión');return;}
+  console.log('[GAL] openEventGallery items='+GAL.items.length);
+  if(!GAL.items.length){
+    toast('Sin eventos registrados en esta sesión');
+    return;
+  }
   GAL.items.sort((a,b)=>(a.event.humanLabel?1:0)-(b.event.humanLabel?1:0));
   openGallery(0);
 }
