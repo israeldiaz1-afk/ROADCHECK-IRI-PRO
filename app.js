@@ -1101,10 +1101,16 @@ function mergeEventsIntoStorage(newEvents){
       match.confirmed=match.confirmCount>=2;
       match.lastSeen=ev.ts;
     }else{
-      stored.push({...ev,lastSeen:ev.ts});
+      const {_frameBlobs,_frameBlob,_clipBlobs,...evClean}=ev;
+      stored.push({...evClean,lastSeen:ev.ts});
     }
   });
-  try{localStorage.setItem('rc_urban_events',JSON.stringify(stored));}catch(e){toast('Error guardando eventos');}
+  try{
+    localStorage.setItem('rc_urban_events',JSON.stringify(stored));
+  }catch(e){
+    console.error('[merge]',e.message);
+    toast('⚠️ Error guardando eventos: '+e.message);
+  }
 }
 
 // ─ History ────────────────────────────────────
