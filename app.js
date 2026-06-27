@@ -421,7 +421,9 @@ function detectEvent(){
   if(S.urbanBuf.length<20)return;
   const latest=S.urbanBuf[S.urbanBuf.length-1];
   const dynamicThreshold=S.noiseBaseline.mean+4*S.noiseBaseline.std; // 4-sigma
-  if(Math.abs(latest.vert)<Math.max(dynamicThreshold,1.2))return; // 1.2 m/s² suelo absoluto
+  if(Math.abs(latest.vert)<Math.max(
+    dynamicThreshold,
+    URBAN_TUNABLE.triggerFloorMs2))return;
   if(S._lastEventTs&&latest.t-S._lastEventTs<300)return; // anti-rebote 300ms
   extractFeaturesAndScore(latest.t);
 }
@@ -481,7 +483,7 @@ function extractFeaturesAndScore(triggerTs){
 // Parámetros ajustables en campo — valores validados con banco de pruebas sintético
 const URBAN_TUNABLE={
   triggerSigma:4,
-  triggerFloorMs2:1.2,
+  triggerFloorMs2:0.8,
   vRefUrban:25,
   vMinNormalize:5,
   speedExponent:0.7,
