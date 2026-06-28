@@ -957,6 +957,7 @@ function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidd
 function stopMeasurement(){
   toast('[STOP] iniciando...');
   $('cameraSelectorModal')?.classList.add('hidden');
+  alert('STOP ejecutado - eventos: '+S.urbanEvents.length+' GAL: '+GAL.items.length);
   S.active=false;S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
   stopVideoBuffer();EKG.buf.marks=[];EKG.buf.totalSamples=0;
   const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='none';
