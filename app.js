@@ -387,9 +387,11 @@ function onRaw(x,y,z){
   if(!S.calibrated)return;
   const g=S.grav;
   const raw=Math.abs(x*g.x+y*g.y+z*g.z-S.gravMag);
-  if(S.activeModes.has('urban'))feedUrbanBuffer(x,y,z,Date.now());
-  if(S.activeModes.has('comfort'))onComfortSample(x,y,z,Date.now());
-  onVert(raw);
+  if(S.active){
+    if(S.activeModes.has('urban'))feedUrbanBuffer(x,y,z,Date.now());
+    if(S.activeModes.has('comfort'))onComfortSample(x,y,z,Date.now());
+    onVert(raw);
+  }
   if(S.active&&!S.paused){
     updateAccelViz(x,y,z);
     const _ts=Date.now();
@@ -1006,11 +1008,9 @@ function stopMeasurement(){
     iriData,urbanData,comfortData
   };
   toast('[STOP] llegando a modal...');
-  alert('pendingRoute creado: '+(!!S.pendingRoute)+' urbanData eventos: '+(S.pendingRoute?.urbanData?.events?.length||0));
   showValidateModal();
 }
 function showValidateModal(){
-  alert('showValidateModal GAL='+GAL.items.length);
   const n=GAL.items.length;
   if(n===0){showRouteNameModal();return;}
   set('vnCount',n.toString());
