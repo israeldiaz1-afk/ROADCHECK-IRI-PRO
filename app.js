@@ -957,7 +957,6 @@ function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidd
 function stopMeasurement(){
   toast('[STOP] iniciando...');
   $('cameraSelectorModal')?.classList.add('hidden');
-  alert('STOP ejecutado - eventos: '+S.urbanEvents.length+' GAL: '+GAL.items.length);
   S.active=false;S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
   stopVideoBuffer();EKG.buf.marks=[];EKG.buf.totalSamples=0;
   const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='none';
@@ -1007,9 +1006,11 @@ function stopMeasurement(){
     iriData,urbanData,comfortData
   };
   toast('[STOP] llegando a modal...');
+  alert('pendingRoute creado: '+(!!S.pendingRoute)+' urbanData eventos: '+(S.pendingRoute?.urbanData?.events?.length||0));
   showValidateModal();
 }
 function showValidateModal(){
+  alert('showValidateModal GAL='+GAL.items.length);
   const n=GAL.items.length;
   if(n===0){showRouteNameModal();return;}
   set('vnCount',n.toString());
