@@ -955,6 +955,7 @@ async function startMeasurement(){
 function pauseMeasurement(){S.paused=true;$('btnPause').classList.add('hidden');$('btnResume').classList.remove('hidden');toast('⏸ Pausado');}
 function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');toast('▶ Reanudado');}
 function stopMeasurement(){
+  toast('[STOP] iniciando...');
   $('cameraSelectorModal')?.classList.add('hidden');
   S.active=false;S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
   stopVideoBuffer();EKG.buf.marks=[];EKG.buf.totalSamples=0;
@@ -1004,6 +1005,7 @@ function stopMeasurement(){
     vehicleId:iriData?.vehicleId||null,
     iriData,urbanData,comfortData
   };
+  toast('[STOP] llegando a modal...');
   showValidateModal();
 }
 function showValidateModal(){
