@@ -1007,14 +1007,22 @@ function stopMeasurement(){
     vehicleId:iriData?.vehicleId||null,
     iriData,urbanData,comfortData
   };
-  toast('[STOP] llegando a modal...');
   showValidateModal();
 }
 function showValidateModal(){
   const n=GAL.items.length;
-  if(n===0){showRouteNameModal();return;}
-  set('vnCount',n.toString());
-  $('validateNowModal').classList.remove('hidden');
+  if(n===0){
+    showRouteNameModal();
+    return;
+  }
+  set('vnCount', n.toString());
+  const modal=$('validateNowModal');
+  if(!modal){
+    showRouteNameModal();
+    return;
+  }
+  modal.style.zIndex='9999';
+  modal.classList.remove('hidden');
 }
 function validateNow(){
   $('validateNowModal').classList.add('hidden');
@@ -1026,12 +1034,17 @@ function validateLater(){
 }
 function showRouteNameModal(){
   $('routeNameInput').value='';
-  $('routeNameModal').classList.remove('hidden');
+  const modal=$('routeNameModal');
+  if(modal){
+    modal.style.zIndex='9999';
+    modal.classList.remove('hidden');
+  }
   updateNoiseFilterUI();
   const galBtn=$('galOpenBtn');
   if(galBtn){
     const n=GAL.items.length;
-    galBtn.textContent='📷 Validar eventos'+(n>0?' ('+n+')':'');
+    galBtn.textContent='📷 Validar eventos'+
+      (n>0?' ('+n+')':'');
     galBtn.style.display=n>0?'block':'none';
   }
 }
