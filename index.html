@@ -442,6 +442,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .av-zfill.event{animation:zEventFlash .7s ease-out;}
 .av-zcenter{position:absolute;top:50%;left:0;right:0;height:2px;background:rgba(14,165,233,.25);transform:translateY(-50%);}
 .av-zval{font-size:.62rem;color:var(--dim);font-family:var(--mono);}
+#btnStop{position:relative!important;z-index:9999!important;pointer-events:all!important;}
 </style>
 </head>
 <body>
@@ -707,7 +708,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
   <div class="m-btns">
     <button id="btnPause" class="btn btn-sec" onclick="pauseMeasurement()">⏸ Pausar</button>
     <button id="btnResume" class="btn btn-sec hidden" onclick="resumeMeasurement()">▶ Reanudar</button>
-    <button id="btnStop" class="btn btn-red" onclick="stopMeasurement()">⏹ Detener</button>
+    <button id="btnStop" class="btn btn-red" style="position:relative;z-index:9999" onclick="stopMeasurement()">⏹ Detener</button>
   </div>
 </div>
 
