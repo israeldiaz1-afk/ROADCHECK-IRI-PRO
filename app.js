@@ -157,6 +157,10 @@ function updateMeasPanel(){
   const hasUrban=S.activeModes.has('urban');
   $('measIRIPanel')?.classList.toggle('hidden',!hasIRI);
   $('measUrbanPanel')?.classList.toggle('hidden',!hasUrban);
+  const stats=document.querySelector('.m-stats');
+  if(stats){
+    stats.style.display=hasUrban&&!hasIRI?'none':'flex';
+  }
 }
 function recalcMainLayout(){
   const screenEl=$('tab-main');if(!screenEl)return;
