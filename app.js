@@ -2430,6 +2430,9 @@ function openGallery(startIdx=0){
 function closeGallery(){
   $('eventGalleryModal').classList.add('hidden');
   GAL.img=null;
+  if(S.pendingRoute){
+    showRouteNameModal();
+  }
 }
 function galleryNav(dir){
   const newIdx=GAL.idx+dir;
