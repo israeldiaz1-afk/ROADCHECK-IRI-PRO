@@ -381,7 +381,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .btn-map-center:active{background:rgba(14,165,233,.2)}
 
 /* ── GALERÍA DE VALIDACIÓN ── */
-.gallery-modal-box{position:fixed;inset:0;z-index:8000;background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
+.gallery-modal-box{background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
 .gal-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--s1);border-bottom:1px solid rgba(14,165,233,.15);flex-shrink:0}
 .gal-counter{font-family:var(--mono);font-size:var(--fs-sm);color:var(--sky)}
 .gal-title{font-size:var(--fs-sm);color:var(--txt)}
@@ -582,8 +582,8 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 </div>
 
 <!-- GALERÍA DE VALIDACIÓN -->
-<div class="modal hidden" id="eventGalleryModal">
-  <div class="gallery-modal-box">
+<div class="modal-bg hidden" id="eventGalleryModal">
+  <div class="gallery-modal-box" style="background:var(--s1);border-radius:12px 12px 0 0;width:100%;max-width:480px;max-height:95vh;overflow-y:auto;display:flex;flex-direction:column;">
     <div class="gal-header">
       <span class="gal-counter" id="galCounter">1 / 0</span>
       <span class="gal-title" id="galTitle">Revisión de eventos</span>
