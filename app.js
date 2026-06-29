@@ -953,13 +953,16 @@ async function startMeasurement(){
   } catch(e) {
     toast('❌ Excepción: '+e.message);
   }
+  const b=$('btnStopFixed');if(b)b.style.display='block';
 }
 function pauseMeasurement(){S.paused=true;$('btnPause').classList.add('hidden');$('btnResume').classList.remove('hidden');toast('⏸ Pausado');}
 function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');toast('▶ Reanudado');}
 function stopMeasurement(){
   toast('[STOP] iniciando...');
   $('cameraSelectorModal')?.classList.add('hidden');
-  S.active=false;S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
+  S.active=false;
+  const b=$('btnStopFixed');if(b)b.style.display='none';
+  S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
   stopVideoBuffer();EKG.buf.marks=[];EKG.buf.totalSamples=0;
   const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='none';
 
