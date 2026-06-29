@@ -1014,17 +1014,10 @@ function stopMeasurement(){
 }
 function showValidateModal(){
   const n=GAL.items.length;
-  if(n===0){
-    showRouteNameModal();
-    return;
-  }
-  set('vnCount', n.toString());
+  if(n===0){showRouteNameModal();return;}
+  set('vnCount',n.toString());
   const modal=$('validateNowModal');
-  if(!modal){
-    showRouteNameModal();
-    return;
-  }
-  modal.style.zIndex='9999';
+  if(!modal){showRouteNameModal();return;}
   modal.classList.remove('hidden');
 }
 function validateNow(){
