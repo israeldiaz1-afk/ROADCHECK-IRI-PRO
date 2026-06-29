@@ -943,8 +943,6 @@ async function startMeasurement(){
   ['aMax','aMed','aMin'].forEach(id=>set(id,'—'));set('aSegs','0');
   $('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');
   startTimer();
-  const sf=$('btnStopFloat');
-  if(sf){sf.style.display='flex';sf.style.alignItems='center';sf.style.justifyContent='center';sf.style.flexDirection='column';}
   try {
     navigator.mediaDevices.getUserMedia({video:true,audio:false})
       .then(s => {
@@ -961,9 +959,7 @@ function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidd
 function stopMeasurement(){
   toast('[STOP] iniciando...');
   $('cameraSelectorModal')?.classList.add('hidden');
-  S.active=false;
-  const sf=$('btnStopFloat');if(sf)sf.style.display='none';
-  S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
+  S.active=false;S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
   stopVideoBuffer();EKG.buf.marks=[];EKG.buf.totalSamples=0;
   const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='none';
 
