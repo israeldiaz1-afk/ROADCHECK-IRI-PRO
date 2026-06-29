@@ -742,23 +742,5 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
   if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();window._pwa=e;});
 </script>
-<button onclick="stopMeasurement()"
-  style="position:fixed;
-         bottom:env(safe-area-inset-bottom,16px);
-         left:50%;
-         transform:translateX(-50%);
-         z-index:99999;
-         background:#EF4444;
-         color:white;
-         border:none;
-         border-radius:25px;
-         padding:14px 40px;
-         font-size:1rem;
-         font-weight:700;
-         display:none;
-         box-shadow:0 4px 20px rgba(0,0,0,.5)"
-  id="btnStopFixed">
-  ⏹ DETENER
-</button>
 </body>
 </html>
