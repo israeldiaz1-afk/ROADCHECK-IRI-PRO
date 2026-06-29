@@ -1435,17 +1435,20 @@ async function expHTMLUrban(r){
   const graves=events.filter(e=>e.severity==='grave').length;
   const moderados=events.filter(e=>e.severity==='moderado').length;
   const validated=events.filter(e=>e.humanLabel).length;
+  const noiseBtn=S.noiseFilter?.appliedPost
+    ?'<p style="color:#10B981;font-size:.8rem">✅ Ruido de fondo eliminado</p>'
+    :'<button onclick="applyPostProcessNoise();this.parentNode.removeChild(this);document.querySelector(\'.meta\').insertAdjacentHTML(\'afterend\',\'<p style=\\\"color:#10B981\\\">✅ Ruido eliminado</p>\')" style="margin:8px 0;padding:8px 16px;background:#0EA5E9;color:#05111F;border:none;border-radius:6px;cursor:pointer;font-size:.8rem">🧹 Limpiar ruido de fondo</button>';
   const eventsWithImages=await Promise.all(events.map(async e=>{
     const blob=e._frameBlobs?.[0]?.blob||
                e._frameBlobs?.[1]?.blob||
                e._frameBlobs?.[2]?.blob||
                e._frameBlob||null;
-    if(!(blob instanceof Blob)) return null;
+    if(!blob||!(blob instanceof Blob)){return{...e,imgB64:null};}
     const imgB64=await blobToBase64(blob);
     return{...e,imgB64};
   }));
   const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Informe Urbano — Pavement Check</title>
-<style>body{font-family:'Segoe UI',sans-serif;margin:0;padding:16px;background:#f8f9fa;color:#1a1a2e}h1{font-size:1.4rem;color:#0EA5E9;margin-bottom:4px}.meta{font-size:.8rem;color:#666;margin-bottom:16px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px}.stat{background:#fff;border-radius:8px;padding:12px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.1)}.stat-val{font-size:1.8rem;font-weight:700}.stat-lbl{font-size:.72rem;color:#666}.events{display:grid;gap:16px}.event{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.12)}.event-img{width:100%;max-height:220px;object-fit:cover}.event-body{padding:12px}.event-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.event-type{font-weight:700;font-size:1rem}.event-sev{font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:10px}.event-meta{font-size:.72rem;color:#666;font-family:monospace;margin-top:4px}.event-desc{font-size:.8rem;color:#444;margin-top:6px;font-style:italic}.event-val{display:inline-block;font-size:.68rem;padding:2px 8px;border-radius:8px;margin-top:4px}.val-ok{background:#d1fae5;color:#065f46}.val-no{background:#fee2e2;color:#991b1b}.val-edit{background:#fef3c7;color:#92400e}.no-img{height:100px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:2rem}@media print{.events{display:block}.event{page-break-inside:avoid;margin-bottom:16px}}</style>
+<style>body{font-family:'Segoe UI',sans-serif;margin:0;padding:16px;background:#f8f9fa;color:#1a1a2e}h1{font-size:1.4rem;color:#0EA5E9;margin-bottom:4px}.meta{font-size:.8rem;color:#666;margin-bottom:16px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px}.stat{background:#fff;border-radius:8px;padding:12px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.1)}.stat-val{font-size:1.8rem;font-weight:700}.stat-lbl{font-size:.72rem;color:#666}.events{display:grid;gap:16px}.event{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.12)}.event-img{width:100%;max-height:220px;object-fit:cover}.event-body{padding:12px}.event-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.event-type{font-weight:700;font-size:1rem}.event-sev{font-size:.75rem;font-weight:700;padding:3px 10px;border-radius:10px}.event-meta{font-size:.72rem;color:#666;font-family:monospace;margin-top:4px}.event-desc{font-size:.8rem;color:#444;margin-top:6px;font-style:italic}.event-val{display:inline-block;font-size:.68rem;padding:2px 8px;border-radius:8px;margin-top:4px}.val-ok{background:#d1fae5;color:#065f46}.val-no{background:#fee2e2;color:#991b1b}.val-edit{background:#fef3c7;color:#92400e}.noi{height:100px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:.8rem}.no-img{height:100px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:2rem}@media print{.events{display:block}.event{page-break-inside:avoid;margin-bottom:16px}}</style>
 </head><body>
 <h1>📋 Informe de Patologías de Pavimento Urbano</h1>
 <div class="meta">Fecha: ${new Date(r.ts||Date.now()).toLocaleString('es-ES')} · Ruta: ${r.name||'Sin nombre'} · Distancia: ${(r.dist||0).toFixed(0)} m · Pavement Check v1.0</div>${noiseBtn}
@@ -1454,13 +1457,10 @@ async function expHTMLUrban(r){
   const icon=typeIcons[e.type]||'❓';
   const sCol=sevColors[e.severity]||'#666';
   const valBadge=e.humanLabel==='confirmed'?'<span class="event-val val-ok">✅ Confirmado</span>':e.humanLabel==='discarded'?'<span class="event-val val-no">❌ Falso positivo</span>':e.humanLabel==='corrected'?'<span class="event-val val-edit">✏️ Corregido</span>':'';
-  const imgHtml=e.imgB64?`<img class="event-img" src="data:image/jpeg;base64,${e.imgB64}" alt="Evento ${i+1}">`:'<div class="no-img">📷</div>';
+  const imgHtml=e.imgB64?`<img class="event-img" src="data:image/jpeg;base64,${e.imgB64}" alt="Evento ${i+1}">`:'<div class="noi">📷 Sin imagen</div>';
   return`<div class="event">${imgHtml}<div class="event-body"><div class="event-header"><span class="event-type">${icon} ${e.type||'desconocido'}</span><span class="event-sev" style="background:${sCol}22;color:${sCol}">${e.severity||'—'}</span></div><div class="event-meta">Score: ${e.score?.toFixed(0)||'—'} · ${e.speed?.toFixed(0)||'—'} km/h · ${e.lat?.toFixed(5)||'—'}, ${e.lon?.toFixed(5)||'—'}</div>${e.gemini?.description?`<div class="event-desc">"${e.gemini.description}"</div>`:''}${valBadge}</div></div>`;
 }).join('')}</div>
 </body></html>`;
-  const noiseBtn=S.noiseFilter?.appliedPost
-    ?'<p style="color:#10B981;font-size:.8rem">✅ Ruido de fondo eliminado</p>'
-    :'<button onclick="applyPostProcessNoise();this.parentNode.removeChild(this);document.querySelector(\'.meta\').insertAdjacentHTML(\'afterend\',\'<p style=\\\"color:#10B981\\\">✅ Ruido eliminado</p>\')" style="margin:8px 0;padding:8px 16px;background:#0EA5E9;color:#05111F;border:none;border-radius:6px;cursor:pointer;font-size:.8rem">🧹 Limpiar ruido de fondo</button>';
   dlBlob(html,'text/html','informe_urbano_'+(r.name||'ruta').replace(/\s/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.html');
 }
 function expHTML(id){
