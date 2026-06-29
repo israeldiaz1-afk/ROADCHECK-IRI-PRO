@@ -708,7 +708,6 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
   <div class="m-btns">
     <button id="btnPause" class="btn btn-sec" onclick="pauseMeasurement()">⏸ Pausar</button>
     <button id="btnResume" class="btn btn-sec hidden" onclick="resumeMeasurement()">▶ Reanudar</button>
-    <button id="btnStop" class="btn btn-red" style="position:relative;z-index:9999" onclick="stopMeasurement()">⏹ Detener</button>
   </div>
 </div>
 
@@ -742,5 +741,15 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
   if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();window._pwa=e;});
 </script>
+<button id="btnStopFloat"
+  style="position:fixed;bottom:16px;right:16px;
+         z-index:99999;width:80px;height:80px;
+         border-radius:50%;background:#EF4444;
+         color:#fff;font-size:1rem;font-weight:700;
+         border:none;cursor:pointer;display:none;
+         box-shadow:0 4px 12px rgba(239,68,68,.5)"
+  onclick="stopMeasurement()">
+  ⏹<br>Parar
+</button>
 </body>
 </html>
