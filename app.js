@@ -1333,19 +1333,27 @@ function loadHistory(){
     if(modes.includes('comfort')&&r.comfortData){const cls=classifyComfort(r.comfortData.avgAv||0);badges.push(`<span class="iri-badge" style="background:rgba(168,85,247,.1);color:#A855F7;border:1px solid rgba(168,85,247,.25)">a_v ${(r.comfortData.avgAv||0).toFixed(3)} m/s²</span>`);}
     if(modes.includes('urban')&&r.urbanData)badges.push(`<span class="iri-badge" style="background:rgba(245,158,11,.1);color:#F59E0B;border:1px solid rgba(245,158,11,.25)">${r.urbanData.events.length} eventos</span>`);
 
+    const pendingBadge = r.urbanData && r.urbanData.validationComplete===false
+      ? `<span class="route-pending-badge">⏳ ${r.urbanData.pendingCount} sin validar</span>`
+      : '';
+
     const canOpenDetail=modes.includes('iri')&&(r.segs||[]).length>0;
     const clickAttr=canOpenDetail?`onclick="openDetail('${r.id}')" style="cursor:pointer"`:'';
     const stopProp=canOpenDetail?'event.stopPropagation();':'';
     const actsExtra=canOpenDetail?`
           <button class="rca" onclick="${stopProp}expKML('${r.id}')"><span class="rca-ico">🌍</span>KML</button>
           <button class="rca" onclick="${stopProp}expJSON('${r.id}')"><span class="rca-ico">{ }</span>JSON</button>`:'';
+    const continueValBtn = r.urbanData?.validationComplete===false
+      ? `<button class="rca" onclick="${stopProp}continueValidation('${r.id}')"><span class="rca-ico">🔍</span>Validar</button>`
+      : '';
 
     return`<div class="route-card" ${clickAttr}>
       <div class="rc-ind" style="background:${r.avgC!=null?iCol(r.avgC):'#A855F7'}"></div>
-      <div class="rc-body"><div class="rc-name">${escH(r.name||fmtD(Date.parse(r.date)))}</div>
+      <div class="rc-body"><div class="rc-name">${escH(r.name||fmtD(Date.parse(r.date)))}${pendingBadge}</div>
       <div class="rc-meta"><span>${mIcons}</span><span>📏 ${dt}</span><span>🗓 ${fmtD(Date.parse(r.date))}</span></div>
       ${badges.join(' ')}</div>
       <div class="rc-acts">
+        ${continueValBtn}
         <button class="rca" onclick="${stopProp}expXLSX('${r.id}')"><span class="rca-ico">📊</span>Excel</button>
         <button class="rca" onclick="${stopProp}expHTML('${r.id}')"><span class="rca-ico">📈</span>Informe</button>${actsExtra}
         <button class="rca del" onclick="${stopProp}deleteRoute('${r.id}')"><span class="rca-ico">🗑</span>Borrar</button>
@@ -1377,6 +1385,13 @@ function showDetail(route,others){
   set('detailTitle',escH(route.name||fmtD(Date.parse(route.date))));
   set('dIRI',(dr.avgC||0).toFixed(3));set('dDist',dt);set('dSpeed',avgS.toFixed(1)+' km/h');set('dSegs',(dr.segs||[]).length.toString());
   $('dPtInfo').textContent='Toca el gráfico o un punto de la ruta en el mapa para inspeccionar';
+  // Mostrar botón continuar validación si hay pendientes
+  const btn=$('btnContinueValidation');
+  if(btn){
+    const pending=route.urbanData&&route.urbanData.validationComplete===false;
+    btn.style.display=pending?'block':'none';
+    btn.dataset.routeId=route.id;
+  }
   // Inicializar tras render
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     initDetailMap(dr);
@@ -2681,9 +2696,73 @@ function openGallery(startIdx=0){
   renderGalleryItem(GAL.idx);
   initGalleryGestures();
 }
+async function continueValidation(routeId){
+  // routeId puede venir del botón de la tarjeta o del dataset del botón del detalle
+  const rid = routeId || $('btnContinueValidation')?.dataset.routeId;
+  if(!rid)return;
+
+  const route=allRoutes().find(r=>r.id===rid);
+  if(!route||!route.urbanData){toast('Ruta no encontrada');return;}
+
+  toast('Cargando eventos…');
+  const events=route.urbanData.events||[];
+
+  GAL.items=await Promise.all(events.map(async(event)=>{
+    const[blobA,blobB,blobC]=await getImageBlobs([
+      event.id+'_A',event.id+'_B',event.id+'_C'
+    ]);
+    const frameBlobs=[];
+    if(blobA)frameBlobs.push({blob:blobA,label:'A',diff:0});
+    if(blobB)frameBlobs.push({blob:blobB,label:'B',diff:0});
+    if(blobC)frameBlobs.push({blob:blobC,label:'C',diff:0});
+    return{event:{...event,_frameBlobs:frameBlobs}};
+  }));
+
+  S._continuingValidationRouteId=rid;
+  const firstPending=GAL.items.findIndex(i=>!i.event.humanLabel);
+  openGallery(firstPending>=0?firstPending:0);
+}
+
+function saveValidationProgress(routeId){
+  try{
+    const routes=allRoutes();
+    const idx=routes.findIndex(r=>r.id===routeId);
+    if(idx===-1)return;
+
+    const updatedEvents=GAL.items.map(i=>{
+      const{_frameBlobs,...cleanEvent}=i.event;
+      return cleanEvent;
+    });
+
+    const validationComplete=updatedEvents.every(e=>!!e.humanLabel);
+    const pendingCount=updatedEvents.filter(e=>!e.humanLabel).length;
+
+    routes[idx].urbanData={
+      ...routes[idx].urbanData,
+      events:updatedEvents,
+      validationComplete,
+      pendingCount
+    };
+
+    localStorage.setItem('rc_routes',JSON.stringify(routes));
+  }catch(e){
+    console.error('[saveValidationProgress]',e.message);
+    toast('⚠️ Error guardando progreso');
+  }
+}
+
 function closeGallery(){
   $('eventGalleryModal').classList.add('hidden');
   GAL.img=null;
+
+  if(S._continuingValidationRouteId){
+    saveValidationProgress(S._continuingValidationRouteId);
+    S._continuingValidationRouteId=null;
+    toast('✅ Progreso de validación guardado');
+    loadHistory();
+    return;
+  }
+
   if(S.pendingRoute){
     showRouteNameModal();
   }

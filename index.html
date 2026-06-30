@@ -196,6 +196,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .iri-badge.good{background:rgba(16,185,129,.12);color:var(--good);border:1px solid rgba(16,185,129,.25)}
 .iri-badge.fair{background:var(--amb-a);color:var(--fair);border:1px solid rgba(245,158,11,.25)}
 .iri-badge.bad{background:rgba(239,68,68,.1);color:var(--bad);border:1px solid rgba(239,68,68,.2)}
+.route-pending-badge{display:inline-block;font-size:var(--fs-xs);background:rgba(245,158,11,.15);color:#F59E0B;padding:2px 8px;border-radius:8px;margin-left:6px;font-family:var(--mono)}
 .rc-acts{display:flex;border-top:1px solid var(--ln)}
 .rca{flex:1;padding:7px 2px;border:none;background:none;color:var(--dim);font-size:.56rem;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;transition:all .14s;border-right:1px solid var(--ln);font-family:var(--ui);letter-spacing:.3px}
 .rca:last-child{border-right:none}.rca:active{background:var(--s2);color:var(--txt)}.rca.del:active{background:rgba(239,68,68,.08);color:var(--bad)}.rca-ico{font-size:.88rem}
@@ -734,6 +735,11 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
   </div>
   <div class="d-chart"><canvas id="detailChart"></canvas></div>
   <div id="dPtInfo">Toca el gráfico o la ruta en el mapa para inspeccionar un punto</div>
+  <button class="btn btn-sec" id="btnContinueValidation"
+          style="display:none;width:100%;margin-top:6px"
+          onclick="continueValidation()">
+    🔍 Continuar validación
+  </button>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
