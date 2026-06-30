@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no,viewport-fit=cover">
-  <script src="https://cdn.jsdelivr.net/npm/vconsole@3.15.0/dist/vconsole.min.js"></script>
   <meta name="theme-color" content="#05111F">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -750,6 +749,21 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
   if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();window._pwa=e;});
 </script>
-<script>window._vc = new VConsole();</script>
+<div class="modal-bg hidden" id="downloadReadyModal">
+  <div class="modal">
+    <h3>📄 Archivo listo</h3>
+    <p class="sub" id="downloadReadyInfo"></p>
+    <div class="modal-btns" style="flex-direction:column;gap:8px">
+      <a id="downloadReadyLink" class="btn btn-pri"
+         style="text-decoration:none;text-align:center;display:block">
+        ⬇️ Descargar
+      </a>
+      <button class="btn btn-sec"
+              onclick="$('downloadReadyModal').classList.add('hidden')">
+        Cerrar
+      </button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

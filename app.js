@@ -1534,41 +1534,23 @@ function refreshVisor(){
 }
 
 // ─ Exports ────────────────────────────────────
-let _lastDownloadLink = null;
-
 function dlBlob(c, t, n) {
-  console.log('[dlBlob] iniciando descarga:', n);
-
-  // Limpiar cualquier link de descarga anterior
-  if (_lastDownloadLink) {
-    try {
-      URL.revokeObjectURL(_lastDownloadLink.href);
-      _lastDownloadLink.remove();
-    } catch(e) {}
-    _lastDownloadLink = null;
-  }
-
   const b = new Blob([c], { type: t });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(b);
-  a.download = n;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  _lastDownloadLink = a;
+  const url = URL.createObjectURL(b);
 
-  // Pequeño delay antes del click ayuda a que Chrome
-  // no lo trate como descarga automática sospechosa
-  setTimeout(() => {
-    a.click();
-    console.log('[dlBlob] click disparado:', n);
+  const link = $('downloadReadyLink');
+  link.href = url;
+  link.download = n;
+
+  set('downloadReadyInfo', n);
+  $('downloadReadyModal').classList.remove('hidden');
+
+  link.onclick = () => {
     setTimeout(() => {
-      if (_lastDownloadLink === a) {
-        URL.revokeObjectURL(a.href);
-        a.remove();
-        _lastDownloadLink = null;
-      }
-    }, 2000);
-  }, 50);
+      $('downloadReadyModal').classList.add('hidden');
+      URL.revokeObjectURL(url);
+    }, 300);
+  };
 }
 function expJSON(id){const r=allRoutes().find(r=>r.id===id);if(!r)return;dlBlob(JSON.stringify(r,null,2),'application/json','roadcheck_'+r.id.slice(-6)+'.json');toast('JSON exportado');}
 function expKML(id){
@@ -1774,7 +1756,8 @@ ${noiseCandidatesNote}
 <div class="cards">${rows}</div>
 </body></html>`;
 
-  dlBlob(html,'text/html','informe_urbano_'+(r.name||'ruta').replace(/\s/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.html');
+  const statusTag = liveRoute.urbanData?.validationComplete ? 'FINAL' : 'PRELIMINAR';
+  dlBlob(html,'text/html','informe_urbano_'+statusTag+'_'+(r.name||'ruta').replace(/\s/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.html');
   }catch(e){console.error('[expHTMLUrban] ERROR:',e);toast('⚠️ Error generando informe: '+e.message);}
 }
 function expHTML(id){
