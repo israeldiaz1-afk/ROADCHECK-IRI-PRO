@@ -2753,6 +2753,13 @@ async function continueValidation(routeId){
   }));
 
   S._continuingValidationRouteId=rid;
+  // Limpiar la copia obsoleta en memoria de esta
+  // ruta — vamos a trabajar con datos frescos de
+  // localStorage + IndexedDB, no con la sesión
+  // original que quedó desactualizada
+  if (S._lastSavedRouteWithBlobs?.id === rid) {
+    S._lastSavedRouteWithBlobs = null;
+  }
   const firstPending=GAL.items.findIndex(i=>!i.event.humanLabel);
   openGallery(firstPending>=0?firstPending:0);
 }
@@ -2779,6 +2786,9 @@ function saveValidationProgress(routeId){
     };
 
     localStorage.setItem('rc_routes',JSON.stringify(routes));
+    if (S._lastSavedRouteWithBlobs?.id === routeId) {
+      S._lastSavedRouteWithBlobs = null;
+    }
   }catch(e){
     console.error('[saveValidationProgress]',e.message);
     toast('⚠️ Error guardando progreso');
