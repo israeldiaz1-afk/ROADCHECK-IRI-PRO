@@ -1638,9 +1638,9 @@ function doXLSX(r){
   if(modes.includes('urban')&&r.urbanData?.events?.length){
     const liveRoute=(S._lastSavedRouteWithBlobs?.id===r.id&&S._lastSavedRouteWithBlobs?.urbanData?.events?.some(e=>e._frameBlobs))?S._lastSavedRouteWithBlobs:r;
     const ev=liveRoute.urbanData?.events||r.urbanData.events;
-    const uw=[['#','Fecha','Lat','Lon','Vel.(km/h)','Tipo','Severidad','Score','Confirmado','Tipo (Gemini)','Severidad (Gemini)','Confianza','Descripción IA','Validado por IA','Validación','Candidato a ruido']];
-    ev.forEach((e,i)=>uw.push([i+1,fmtD(e.ts),(e.lat||0).toFixed(7),(e.lon||0).toFixed(7),(e.speed||0).toFixed(1),e.type||'',e.severity||'',+(e.score||0).toFixed(1),e.confirmed?'Sí':'No',e.gemini?.type||'',e.gemini?.severity||'',e.gemini?.confidence!=null?+(e.gemini.confidence*100).toFixed(0)+'%':'',e.gemini?.description||'',e.gemini?(!e.gemini.discard?'Sí':'No'):'',e.humanLabel||'Sin validar',e.noiseCandidate?'Sí':'No']));
-    const wsu=XLSX.utils.aoa_to_sheet(uw);wsu['!cols']=[{wch:5},{wch:18},{wch:13},{wch:13},{wch:11},{wch:12},{wch:11},{wch:8},{wch:11},{wch:14},{wch:18},{wch:11},{wch:32},{wch:14},{wch:14},{wch:16}];
+    const uw=[['#','Fecha','Lat','Lon','Vel.(km/h)','Tipo','Severidad','Score','Confirmado','Tipo (Gemini)','Severidad (Gemini)','Confianza','Descripción IA','Validado por IA','Tipo (YOLO)','Confianza YOLO','Validación','Candidato a ruido']];
+    ev.forEach((e,i)=>uw.push([i+1,fmtD(e.ts),(e.lat||0).toFixed(7),(e.lon||0).toFixed(7),(e.speed||0).toFixed(1),e.type||'',e.severity||'',+(e.score||0).toFixed(1),e.confirmed?'Sí':'No',e.gemini?.type||'',e.gemini?.severity||'',e.gemini?.confidence!=null?+(e.gemini.confidence*100).toFixed(0)+'%':'',e.gemini?.description||'',e.gemini?(!e.gemini.discard?'Sí':'No'):'',e.yolo?.topClass||'—',e.yolo?.topConf?(e.yolo.topConf*100).toFixed(0)+'%':'—',e.humanLabel||'Sin validar',e.noiseCandidate?'Sí':'No']));
+    const wsu=XLSX.utils.aoa_to_sheet(uw);wsu['!cols']=[{wch:5},{wch:18},{wch:13},{wch:13},{wch:11},{wch:12},{wch:11},{wch:8},{wch:11},{wch:14},{wch:18},{wch:11},{wch:32},{wch:14},{wch:18},{wch:14},{wch:14},{wch:16}];
     XLSX.utils.book_append_sheet(wb,wsu,'Urbano_Eventos');
   }
 
@@ -1806,6 +1806,9 @@ async function expHTMLUrban(r){
     const geminiInfo = e.gemini?.description
       ? `<div class="cd">🔍 "${e.gemini.description}" (conf. ${((e.gemini.confidence||0)*100).toFixed(0)}%)</div>`
       : '';
+    const yoloInfo = e.yolo?.confirmed
+      ? `<div class="cd" style="color:#0EA5E9">🎯 YOLO detectó: ${e.yolo.topClass} (${(e.yolo.topConf*100).toFixed(0)}%)</div>`
+      : '';
 
     return `<div class="card">
       ${e.imgB64
@@ -1821,6 +1824,7 @@ async function expHTMLUrban(r){
           ${e.lat?.toFixed(5)||'—'},${e.lon?.toFixed(5)||'—'}</div>
         ${buildWaveformSVG(e.waveform, e.severity)}
         ${geminiInfo}
+        ${yoloInfo}
         ${vb} ${noiseBadge} ${geminiSuggest}
       </div></div>`;
   }).join('');
