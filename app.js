@@ -581,8 +581,8 @@ function extractFeaturesAndScore(triggerTs){
   const features={peakAmp,jerkMax,duration,bipolarity,freqEnergy,brakeCorrelation};
 
   // Capturar ventana de vibración centrada en el pico — solo eje vertical calibrado
-  const wfStart = Math.max(0, peakIdx - 25);
-  const wfEnd = Math.min(window.length, peakIdx + 25);
+  const wfStart = Math.max(0, peakIdx - 15);
+  const wfEnd = Math.min(window.length, peakIdx + 45);
   const waveform = window.slice(wfStart, wfEnd)
     .map(s => parseFloat(s.vert.toFixed(4)));
 
@@ -1704,7 +1704,7 @@ async function expHTMLUrban(r){
 
   const buildWaveformSVG = (waveform, severity) => {
     if (!waveform || waveform.length < 3) return '';
-    const W = 200, H = 60, PAD = 8;
+    const W = 280, H = 60, PAD = 8;
     const max = Math.max(...waveform.map(Math.abs), 0.5);
     const pts = waveform.map((v, i) => {
       const x = PAD + (i / (waveform.length-1)) * (W - PAD*2);
@@ -1715,7 +1715,7 @@ async function expHTMLUrban(r){
     const px = PAD + (peakI/(waveform.length-1))*(W-PAD*2);
     const py = H/2 - (waveform[peakI]/max)*(H/2-PAD);
     const sevColor = severity==='grave' ? '#EF4444' : severity==='moderado' ? '#F97316' : '#F59E0B';
-    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;border-radius:4px;background:#f8fafc;margin-top:6px"><line x1="${PAD}" y1="${H/2}" x2="${W-PAD}" y2="${H/2}" stroke="#e2e8f0" stroke-width="1"/><polyline points="${pts}" fill="none" stroke="${sevColor}" stroke-width="1.5" stroke-linejoin="round"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3" fill="${sevColor}" stroke="#fff" stroke-width="1.5"/><text x="${px.toFixed(1)}" y="${Math.max(10,py-5).toFixed(1)}" text-anchor="middle" font-size="8" font-family="monospace" fill="${sevColor}">${Math.abs(waveform[peakI]).toFixed(2)}m/s\xB2</text></svg>`;
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;border-radius:4px;background:#f8fafc;margin-top:6px"><line x1="${PAD}" y1="${H/2}" x2="${W-PAD}" y2="${H/2}" stroke="#e2e8f0" stroke-width="1"/><polyline points="${pts}" fill="none" stroke="${sevColor}" stroke-width="1.5" stroke-linejoin="round"/><line x1="${px.toFixed(1)}" y1="${PAD}" x2="${px.toFixed(1)}" y2="${H-PAD}" stroke="${sevColor}" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3" fill="${sevColor}" stroke="#fff" stroke-width="1.5"/><text x="${px.toFixed(1)}" y="${Math.max(10,py-5).toFixed(1)}" text-anchor="middle" font-size="8" font-family="monospace" fill="${sevColor}">${Math.abs(waveform[peakI]).toFixed(2)}m/s\xB2</text></svg>`;
   };
 
   const validatedEvents = eventsWithImages.filter(e =>
