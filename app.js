@@ -1591,6 +1591,15 @@ function doXLSX(r){
   if(modes.includes('urban')&&r.urbanData){sum.push(['Eventos urbanos detectados',r.urbanData.events.length]);sum.push(['']);}
   if(modes.includes('comfort')&&r.comfortData){const cd=r.comfortData;sum.push(['a_v medio sesión (m/s²)',(cd.avgAv||0).toFixed(4)]);sum.push(['Nivel confort',classifyComfort(cd.avgAv||0).label]);sum.push(['VDV Z (m/s^1.75)',((cd.vdvSession?.z)||0).toFixed(4)]);sum.push(['fs usado (Hz)',(cd.fsUsed||60).toFixed(1)]);sum.push(['']);sum.push(['ADVERTENCIA METODOLÓGICA']);sum.push(['',COMFORT_DISCLAIMER]);}
   const ws3=XLSX.utils.aoa_to_sheet(sum);ws3['!cols']=[{wch:28},{wch:70}];XLSX.utils.book_append_sheet(wb,ws3,'Resumen');
+
+  // Hoja AVISO cuando la validación está incompleta
+  const liveRouteXLSX=(S._lastSavedRouteWithBlobs?.id===r.id)?S._lastSavedRouteWithBlobs:r;
+  if(modes.includes('urban')&&!liveRouteXLSX.urbanData?.validationComplete){
+    const warningRow=[{'AVISO':`⚠️ INFORME PRELIMINAR — ${liveRouteXLSX.urbanData?.pendingCount||0} eventos sin validar`}];
+    const wsWarning=XLSX.utils.json_to_sheet(warningRow);
+    XLSX.utils.book_append_sheet(wb,wsWarning,'AVISO');
+  }
+
   XLSX.writeFile(wb,'pavcheck_'+r.id.slice(-6)+'.xlsx');toast('Excel exportado ✓');
 }
 function getReportMode(session){
@@ -1677,6 +1686,14 @@ async function expHTMLUrban(r){
       </div></div>`;
   }).join('');
 
+  const preliminaryBanner = !liveRoute.urbanData?.validationComplete
+    ? `<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:10px 14px;margin-bottom:16px;color:#92400E;font-size:.85rem">
+       ⚠️ <strong>INFORME PRELIMINAR</strong> —
+       ${liveRoute.urbanData?.pendingCount||0} evento(s) sin validar.
+       Este informe puede contener falsos positivos no revisados.
+     </div>`
+    : '';
+
   const html=`<!DOCTYPE html><html lang="es"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1705,6 +1722,7 @@ h1{font-size:1.4rem;color:#0EA5E9;margin-bottom:4px}
 .val-ed{background:#fef3c7;color:#92400e}
 </style></head><body>
 <h1>📋 Informe de Patologías de Pavimento Urbano</h1>
+${preliminaryBanner}
 <div class="meta">${new Date(r.date||Date.now()).toLocaleString('es-ES')} · ${r.name||'Sin nombre'} · Pavement Check</div>
 ${noiseBtn}
 ${noiseCandidatesNote}
