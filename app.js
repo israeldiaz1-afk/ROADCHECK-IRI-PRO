@@ -1527,6 +1527,8 @@ function refreshVisor(){
 }
 
 // ─ Exports ────────────────────────────────────
+let _activeDownloadUrl = null;
+
 function dlBlob(c, t, n) {
   document.querySelectorAll('.modal-bg:not(.hidden)')
     .forEach(m => {
@@ -1535,19 +1537,33 @@ function dlBlob(c, t, n) {
       }
     });
 
+  // Liberar la URL anterior SOLO si existe,
+  // antes de crear la nueva (no con setTimeout
+  // que puede revocar la actual por error)
+  if (_activeDownloadUrl) {
+    try { URL.revokeObjectURL(_activeDownloadUrl); } catch(e) {}
+    _activeDownloadUrl = null;
+  }
+
   const b = new Blob([c], { type: t });
   const url = URL.createObjectURL(b);
+  _activeDownloadUrl = url;
+
+  const safeName = n.replace(/[\/\\:,*?"<>|]/g, '-').replace(/\s+/g, '_');
+
   const link = $('downloadReadyLink');
   link.href = url;
-  link.download = n;
-  set('downloadReadyInfo', n);
+  link.download = safeName;
+  set('downloadReadyInfo', safeName);
   $('downloadReadyModal').classList.remove('hidden');
-  console.log('[dlBlob] modal mostrado, link.href=', link.href.substring(0,50), 'download=', link.download);
+
+  // Ya NO revocar la URL al hacer clic — solo
+  // ocultar el modal. La URL se revocará la
+  // PRÓXIMA vez que se llame a dlBlob(), dando
+  // tiempo de sobra para que la descarga termine
   link.onclick = () => {
-    console.log('[dlBlob] CLIC DETECTADO en enlace');
     setTimeout(() => {
       $('downloadReadyModal').classList.add('hidden');
-      URL.revokeObjectURL(url);
     }, 300);
   };
 }
