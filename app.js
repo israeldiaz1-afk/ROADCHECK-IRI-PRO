@@ -1540,19 +1540,21 @@ function dlBlob(c, t, n) {
   const safeName = n.replace(/[\/\\:,*?"<>|]/g,'-')
                     .replace(/\s+/g,'_');
 
+  // Abrir directamente en nueva pestaña
+  // El usuario guarda desde el menú del navegador
+  window.open(url, '_blank');
+
+  // También mostrar el modal con el enlace
+  // como alternativa por si el popup está bloqueado
   const link = $('downloadReadyLink');
   link.href = url;
   link.download = safeName;
   link.target = '_blank';
-  set('downloadReadyInfo', safeName);
+  set('downloadReadyInfo',
+    safeName + '\n(Si no se abrió automáticamente, pulsa Descargar)');
   $('downloadReadyModal').classList.remove('hidden');
 
   link.onclick = () => {
-    // Liberar el blob anterior si existe
-    if (link._prevUrl) {
-      try { URL.revokeObjectURL(link._prevUrl); } catch(e) {}
-    }
-    link._prevUrl = url;
     setTimeout(() => {
       $('downloadReadyModal').classList.add('hidden');
     }, 500);
