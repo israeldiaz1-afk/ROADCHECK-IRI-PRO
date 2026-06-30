@@ -1114,7 +1114,7 @@ function stopMeasurement(){
     vehicleId:iriData?.vehicleId||null,
     iriData,urbanData,comfortData
   };
-  showRouteNameModal();
+  showValidateModal();
 }
 function buildUrbanDataFinal() {
   if (!S.activeModes.has('urban')) return null;
@@ -1127,7 +1127,7 @@ function buildUrbanDataFinal() {
     mergeEventsIntoStorage(eventsClean);
   }
 
-  const validationComplete = eventsClean.length === 0 ||
+  const validationComplete = eventsClean.length > 0 &&
     eventsClean.every(e => !!e.humanLabel);
   const pendingCount = eventsClean.filter(e => !e.humanLabel).length;
 
@@ -1345,7 +1345,7 @@ function loadHistory(){
           <button class="rca" onclick="${stopProp}expKML('${r.id}')"><span class="rca-ico">🌍</span>KML</button>
           <button class="rca" onclick="${stopProp}expJSON('${r.id}')"><span class="rca-ico">{ }</span>JSON</button>`:'';
     const continueValBtn = r.urbanData?.validationComplete===false
-      ? `<button class="rca" onclick="${stopProp}continueValidation('${r.id}')"><span class="rca-ico">🔍</span>Validar</button>`
+      ? `<button class="rca" onclick="event.stopPropagation();continueValidation('${r.id}')"><span class="rca-ico">🔍</span>Validar</button>`
       : '';
 
     return`<div class="route-card" ${clickAttr}>
