@@ -1074,6 +1074,10 @@ function stopMeasurement(){
   if(S.activeModes.has('urban')){
     // Solo marcar como pendiente — se construirá en confirmSave() tras validación
     urbanData={ pending: true };
+    // Análisis automático de ruido — sin esperar acción del usuario
+    if (S.urbanEvents.length >= 5) {
+      markNoiseCandidates();
+    }
     if(S.groundTruth&&S.groundTruth.length>0)
       showValidationResults();
   }
@@ -1235,12 +1239,12 @@ function updateNoiseFilterUI(){
   const row=$('noiseFilterRow'),info=$('noiseFilterInfo');
   if(!row||!info)return;
   const hasUrban=S.activeModes.has('urban')&&S.urbanEvents.length>0;
-  row.style.display=hasUrban?'flex':'none';
+  row.style.display=hasUrban?'block':'none';
   if(hasUrban){
-    const nCandidates=S.urbanEvents.filter(e=>e.noiseCandidate).length;
-    info.textContent=S.noiseFilter.appliedPost
-      ?(nCandidates>0?`🟡 ${nCandidates} candidato(s) a ruido marcado(s)`:'✅ Análisis de ruido completado')
-      :S.urbanEvents.length+' eventos · p15='+S.noiseFilter.percentile15.toFixed(3)+' m/s²';
+    const candidates=S.urbanEvents.filter(e=>e.noiseCandidate).length;
+    info.textContent = candidates>0
+      ? `🟡 ${candidates} candidato(s) a ruido marcados — revísalos en la validación`
+      : `${S.urbanEvents.length} eventos · sin candidatos a ruido detectados`;
   }
 }
 function startTimer(){S.timerStart=Date.now();S.timerRef=setInterval(()=>{if(S.paused)return;const e=Math.floor((Date.now()-S.timerStart)/1000);set('measTimer',String(Math.floor(e/60)).padStart(2,'0')+':'+String(e%60).padStart(2,'0'));},500);}
