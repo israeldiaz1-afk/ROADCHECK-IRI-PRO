@@ -2839,7 +2839,6 @@ function validateEvent(label){
   saveToTrainingDataset(event,event._frameBlob,label);
   const stored=S.urbanEvents.find(e=>e.id===event.id);
   if(stored){stored.humanLabel=label;stored.humanTs=Date.now();}
-  if(label==='discarded')S.urbanEvents=S.urbanEvents.filter(e=>e.id!==event.id);
   const nextUnvalidated=GAL.items.findIndex((it,i)=>i>GAL.idx&&!it.event.humanLabel);
   if(nextUnvalidated!==-1){setTimeout(()=>galleryNav(nextUnvalidated-GAL.idx),300);}
   else toast('✅ Sesión validada — '+GAL.items.filter(i=>i.event.humanLabel).length+' eventos');
