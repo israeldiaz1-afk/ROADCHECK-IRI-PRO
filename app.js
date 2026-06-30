@@ -1197,23 +1197,39 @@ function confirmSave(){
 }
 function discardRoute(){S.pendingRoute=null;$('routeNameModal').classList.add('hidden');toast('Ruta descartada');}
 function applyPostProcessNoise(){
-  const allAmplitudes=S.urbanEvents.map(e=>e.features?.peakAmp||0);
-  if(allAmplitudes.length<5)return;
-  const sorted=[...allAmplitudes].sort((a,b)=>a-b);
-  const p15idx=Math.floor(sorted.length*0.15);
-  S.noiseFilter.percentile15=sorted[p15idx];
-  const noiseThreshold=S.noiseFilter.percentile15+S.noiseBaseline.std;
-  let discarded=0;
-  S.urbanEvents=S.urbanEvents.filter(e=>{
-    const amp=e.features?.peakAmp||0;
-    if(amp<=noiseThreshold&&e.severity==='leve'&&!e.geminiConfirm){discarded++;return false;}
-    return true;
-  });
-  if(discarded>0){
-    S.noiseFilter.appliedPost=true;
-    toast('🧹 Post-procesado: '+discarded+' evento'+(discarded>1?'s':'')+' de ruido eliminado'+(discarded>1?'s':''));
-    console.log('[Ruido] Percentil 15='+S.noiseFilter.percentile15.toFixed(3)+' · Umbral='+noiseThreshold.toFixed(3)+' · Descartados='+discarded);
+  markNoiseCandidates();
+}
+
+function markNoiseCandidates(){
+  const allAmp = S.urbanEvents.map(e => e.features?.peakAmp || 0);
+  if (allAmp.length < 5) {
+    toast('Insuficientes eventos para analizar ruido');
+    return;
   }
+  const sorted = [...allAmp].sort((a,b) => a-b);
+  const p15 = sorted[Math.floor(sorted.length*0.15)];
+  const threshold = p15 + (S.noiseBaseline?.std || 0.1);
+
+  let marked = 0;
+  S.urbanEvents.forEach(e => {
+    const amp = e.features?.peakAmp || 0;
+    if (amp <= threshold && e.severity === 'leve' && !e.humanLabel) {
+      e.noiseCandidate = true;
+      marked++;
+    }
+  });
+
+  S.noiseFilter.percentile15 = p15;
+  S.noiseFilter.appliedPost = true;
+
+  toast(marked > 0
+    ? `🟡 ${marked} evento(s) candidato(s) a ruido — revísalos en la galería`
+    : 'Sin candidatos a ruido detectados');
+
+  queueUI('gallery_refresh', () => {
+    if (GAL.idx < GAL.items.length) renderGalleryItem(GAL.idx);
+  });
+  updateNoiseFilterUI();
 }
 function updateNoiseFilterUI(){
   const row=$('noiseFilterRow'),info=$('noiseFilterInfo');
@@ -1221,8 +1237,9 @@ function updateNoiseFilterUI(){
   const hasUrban=S.activeModes.has('urban')&&S.urbanEvents.length>0;
   row.style.display=hasUrban?'flex':'none';
   if(hasUrban){
+    const nCandidates=S.urbanEvents.filter(e=>e.noiseCandidate).length;
     info.textContent=S.noiseFilter.appliedPost
-      ?'✅ Ruido de fondo eliminado'
+      ?(nCandidates>0?`🟡 ${nCandidates} candidato(s) a ruido marcado(s)`:'✅ Análisis de ruido completado')
       :S.urbanEvents.length+' eventos · p15='+S.noiseFilter.percentile15.toFixed(3)+' m/s²';
   }
 }
@@ -2716,7 +2733,10 @@ function renderGalleryItem(idx){
     `<span class="gal-badge">${frames.length} frame${frames.length!==1?'s':''}</span>`,
     event.humanLabel
       ?`<span class="gal-badge ${event.humanLabel}">${event.humanLabel==='confirmed'?'✅':event.humanLabel==='discarded'?'❌':'✏️'} Validado</span>`
-      :'<span class="gal-badge">Sin validar</span>'
+      :'<span class="gal-badge">Sin validar</span>',
+    event.noiseCandidate
+      ?'<span class="gal-badge" style="background:rgba(234,179,8,.2);color:#EAB308">🟡 Candidato a ruido</span>'
+      :''
   ].join('');
   $('galDesc').textContent=event.gemini?.description||'';
   $('galCoords').textContent=event.lat?`📍 ${event.lat.toFixed(5)}, ${event.lon.toFixed(5)}`:'';
