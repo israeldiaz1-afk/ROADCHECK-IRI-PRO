@@ -1542,7 +1542,9 @@ function dlBlob(c, t, n) {
   link.download = n;
   set('downloadReadyInfo', n);
   $('downloadReadyModal').classList.remove('hidden');
+  console.log('[dlBlob] modal mostrado, link.href=', link.href.substring(0,50), 'download=', link.download);
   link.onclick = () => {
+    console.log('[dlBlob] CLIC DETECTADO en enlace');
     setTimeout(() => {
       $('downloadReadyModal').classList.add('hidden');
       URL.revokeObjectURL(url);
