@@ -680,9 +680,30 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
     : [];
   event._frameBlobs=frames;
   event._frameBlob=frames[1]?.blob||frames[0]?.blob;
+
+  // Persistir cada frame en IndexedDB con su label como sufijo de clave
+  frames.forEach(f => {
+    saveImageBlob(event.id + '_' + f.label, f.blob);
+  });
+  event._hasStoredImages = frames.length > 0;
+
   // Añadir SIEMPRE a galería independientemente de frames
   addToGallery(event);
   if(frames.length>0) showEventThumbnail(event);
+
+  // Invocar Gemini con el frame nominal (B) o el primero disponible
+  if (event._frameBlob) {
+    analyzeEventWithGemini(event, event._frameBlob).then(result => {
+      if (!result) return;
+      event.gemini = result;
+      event.geminiConfirm = !result.discard;
+      queueUI('gallery_refresh', () => {
+        if (GAL.items.some(i => i.event.id === event.id)) {
+          renderGalleryItem(GAL.idx);
+        }
+      });
+    });
+  }
 }
 function showIOSPerm(){$('sensorPermModal')?.classList.remove('hidden');}
 function grantIOS(){$('sensorPermModal')?.classList.add('hidden');DeviceMotionEvent.requestPermission().then(s=>{if(s==='granted'){S.sensorOK=true;$('btnIOS')?.classList.add('hidden');tryAccel();startCal();toast('Permiso concedido');}else toast('Permiso denegado');});}
@@ -2275,8 +2296,10 @@ async function analyzeEventWithGemini(event,imageBlob){
       console.log('[Gemini] '+analysis.type+'/'+analysis.severity+' conf='+analysis.confidence+' — '+analysis.description);
     }
     queueUI('urban_meas',updateUrbanMeasPanel);
+    return analysis;
   }catch(e){
     console.log('[Gemini] Error: '+e.message);
+    return null;
   }
 }
 
