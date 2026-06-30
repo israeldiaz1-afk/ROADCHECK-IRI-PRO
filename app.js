@@ -1534,7 +1534,11 @@ function refreshVisor(){
 }
 
 // ─ Exports ────────────────────────────────────
-function dlBlob(c,t,n){const b=new Blob([c],{type:t}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
+function dlBlob(c,t,n){
+  console.log('[dlBlob] iniciando descarga:',n);
+  const b=new Blob([c],{type:t}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+  console.log('[dlBlob] descarga disparada:',n);
+}
 function expJSON(id){const r=allRoutes().find(r=>r.id===id);if(!r)return;dlBlob(JSON.stringify(r,null,2),'application/json','roadcheck_'+r.id.slice(-6)+'.json');toast('JSON exportado');}
 function expKML(id){
   const r=allRoutes().find(r=>r.id===id);if(!r?.segs?.length)return;
@@ -1545,6 +1549,7 @@ function expKML(id){
 function expXLSX(id){const r=allRoutes().find(r=>r.id===id);if(!r)return;loadXLSX(()=>doXLSX(r));}
 function loadXLSX(cb){if(typeof XLSX!=='undefined'){cb();return;}const s=document.createElement('script');s.src='https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js';s.onload=cb;s.onerror=()=>toast('Error cargando SheetJS');document.head.appendChild(s);}
 function doXLSX(r){
+  try{
   const wb=XLSX.utils.book_new();
   const modes=r.modesUsed||['iri'];
 
@@ -1601,6 +1606,7 @@ function doXLSX(r){
   }
 
   XLSX.writeFile(wb,'pavcheck_'+r.id.slice(-6)+'.xlsx');toast('Excel exportado ✓');
+  }catch(e){console.error('[doXLSX] ERROR:',e);toast('⚠️ Error generando Excel: '+e.message);}
 }
 function getReportMode(session){
   const modes=session.modesUsed||[];
@@ -1609,6 +1615,7 @@ function getReportMode(session){
   return'mixed';
 }
 async function expHTMLUrban(r){
+  try{
   // Preferir la copia con blobs en memoria si es la sesión recién guardada
   const liveRoute = (S._lastSavedRouteWithBlobs?.id === r.id)
     ? S._lastSavedRouteWithBlobs : r;
@@ -1737,6 +1744,7 @@ ${noiseCandidatesNote}
 </body></html>`;
 
   dlBlob(html,'text/html','informe_urbano_'+(r.name||'ruta').replace(/\s/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.html');
+  }catch(e){console.error('[expHTMLUrban] ERROR:',e);toast('⚠️ Error generando informe: '+e.message);}
 }
 function expHTML(id){
   const r=allRoutes().find(r=>r.id===id);if(!r)return;
