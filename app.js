@@ -1528,16 +1528,20 @@ function refreshVisor(){
 
 // ─ Exports ────────────────────────────────────
 function dlBlob(c, t, n) {
+  document.querySelectorAll('.modal-bg:not(.hidden)')
+    .forEach(m => {
+      if (m.id !== 'downloadReadyModal') {
+        m.classList.add('hidden');
+      }
+    });
+
   const b = new Blob([c], { type: t });
   const url = URL.createObjectURL(b);
-
   const link = $('downloadReadyLink');
   link.href = url;
   link.download = n;
-
   set('downloadReadyInfo', n);
   $('downloadReadyModal').classList.remove('hidden');
-
   link.onclick = () => {
     setTimeout(() => {
       $('downloadReadyModal').classList.add('hidden');
