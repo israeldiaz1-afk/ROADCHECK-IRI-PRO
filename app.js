@@ -1119,11 +1119,17 @@ function buildUrbanDataFinal() {
     mergeEventsIntoStorage(eventsClean);
   }
 
+  const validationComplete = eventsClean.length === 0 ||
+    eventsClean.every(e => !!e.humanLabel);
+  const pendingCount = eventsClean.filter(e => !e.humanLabel).length;
+
   return {
     events: eventsClean,
     count: eventsClean.length,
     noiseApplied: S.noiseFilter?.appliedPost || false,
-    noiseCandidatesMarked: S.urbanEvents.filter(e => e.noiseCandidate).length
+    noiseCandidatesMarked: S.urbanEvents.filter(e => e.noiseCandidate).length,
+    validationComplete,
+    pendingCount
   };
 }
 
