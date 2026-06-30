@@ -1746,6 +1746,18 @@ async function expHTMLUrban(r){
     lat:e.lat, lon:e.lon, type:e.type, severity:e.severity, score:e.score,
     humanLabel:e.humanLabel, id:e.id
   })));
+  console.log('[report] validationComplete=',
+    liveRoute.urbanData?.validationComplete,
+    'pendingCount=',
+    liveRoute.urbanData?.pendingCount,
+    'total events=',
+    events.length,
+    'validatedEvents=',
+    events.filter(e=>
+      e.humanLabel==='confirmed'||
+      e.humanLabel==='corrected'
+    ).length
+  );
   const validatedSummary = (liveRoute.urbanData?.validationComplete && validatedEvents.length > 0)
     ? `<div style="margin-top:32px;border-top:2px solid #0EA5E9;padding-top:20px">
         <h2 style="font-size:1.1rem;color:#0EA5E9;margin-bottom:12px">✅ Resumen de eventos validados (${validatedEvents.length})</h2>
