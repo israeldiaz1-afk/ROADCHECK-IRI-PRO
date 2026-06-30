@@ -1534,10 +1534,41 @@ function refreshVisor(){
 }
 
 // ─ Exports ────────────────────────────────────
-function dlBlob(c,t,n){
-  console.log('[dlBlob] iniciando descarga:',n);
-  const b=new Blob([c],{type:t}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
-  console.log('[dlBlob] descarga disparada:',n);
+let _lastDownloadLink = null;
+
+function dlBlob(c, t, n) {
+  console.log('[dlBlob] iniciando descarga:', n);
+
+  // Limpiar cualquier link de descarga anterior
+  if (_lastDownloadLink) {
+    try {
+      URL.revokeObjectURL(_lastDownloadLink.href);
+      _lastDownloadLink.remove();
+    } catch(e) {}
+    _lastDownloadLink = null;
+  }
+
+  const b = new Blob([c], { type: t });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b);
+  a.download = n;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  _lastDownloadLink = a;
+
+  // Pequeño delay antes del click ayuda a que Chrome
+  // no lo trate como descarga automática sospechosa
+  setTimeout(() => {
+    a.click();
+    console.log('[dlBlob] click disparado:', n);
+    setTimeout(() => {
+      if (_lastDownloadLink === a) {
+        URL.revokeObjectURL(a.href);
+        a.remove();
+        _lastDownloadLink = null;
+      }
+    }, 2000);
+  }, 50);
 }
 function expJSON(id){const r=allRoutes().find(r=>r.id===id);if(!r)return;dlBlob(JSON.stringify(r,null,2),'application/json','roadcheck_'+r.id.slice(-6)+'.json');toast('JSON exportado');}
 function expKML(id){
