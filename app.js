@@ -55,6 +55,90 @@ const S={
   }
 };
 
+// ════════════════════════════════════════════════
+// PERSISTENCIA DE IMÁGENES — IndexedDB
+// ════════════════════════════════════════════════
+const IMG_DB = {
+  dbName: 'pavement_check_images',
+  storeName: 'event_images',
+  version: 1,
+  db: null
+};
+
+function openImageDB() {
+  return new Promise((resolve, reject) => {
+    if (IMG_DB.db) { resolve(IMG_DB.db); return; }
+    const req = indexedDB.open(IMG_DB.dbName, IMG_DB.version);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(IMG_DB.storeName)) {
+        db.createObjectStore(IMG_DB.storeName, { keyPath: 'key' });
+      }
+    };
+    req.onsuccess = (e) => { IMG_DB.db = e.target.result; resolve(IMG_DB.db); };
+    req.onerror = (e) => { console.error('[IMG_DB] open error', e); reject(e); };
+  });
+}
+
+async function saveImageBlob(key, blob) {
+  try {
+    const db = await openImageDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IMG_DB.storeName, 'readwrite');
+      tx.objectStore(IMG_DB.storeName).put({ key, blob, ts: Date.now() });
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = (e) => { console.error('[IMG_DB] save error', e); resolve(false); };
+    });
+  } catch(e) { console.error('[IMG_DB] saveImageBlob', e); return false; }
+}
+
+async function getImageBlob(key) {
+  try {
+    const db = await openImageDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(IMG_DB.storeName, 'readonly');
+      const req = tx.objectStore(IMG_DB.storeName).get(key);
+      req.onsuccess = () => resolve(req.result?.blob || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch(e) { return null; }
+}
+
+async function getImageBlobs(keys) {
+  const results = await Promise.all(keys.map(k => getImageBlob(k)));
+  return results;
+}
+
+async function deleteImageBlobs(keys) {
+  try {
+    const db = await openImageDB();
+    const tx = db.transaction(IMG_DB.storeName, 'readwrite');
+    const store = tx.objectStore(IMG_DB.storeName);
+    keys.forEach(k => store.delete(k));
+    return new Promise(resolve => { tx.oncomplete = () => resolve(true); });
+  } catch(e) { return false; }
+}
+
+async function pruneOldImages() {
+  try {
+    const db = await openImageDB();
+    const cutoff = Date.now() - 90*86400000;
+    const tx = db.transaction(IMG_DB.storeName, 'readwrite');
+    const store = tx.objectStore(IMG_DB.storeName);
+    const req = store.openCursor();
+    let pruned = 0;
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        if (cursor.value.ts < cutoff) { cursor.delete(); pruned++; }
+        cursor.continue();
+      } else if (pruned > 0) {
+        console.log('[IMG_DB] Limpiadas ' + pruned + ' imágenes antiguas');
+      }
+    };
+  } catch(e) {}
+}
+
 const VEHICLES=[
   {id:'v01',name:'Toyota Corolla (2018-24)',cat:'Compacto',coefA:2.00,coefB:.50,desc:'McPherson/torsión · 1.3 Hz'},
   {id:'v02',name:'Honda Civic (2020-24)',cat:'Compacto',coefA:2.10,coefB:.50,desc:'McPherson/torsión · 1.35 Hz'},
@@ -2003,6 +2087,7 @@ function switchTab(tab){
 // ─ INIT ──────────────────────────────────────
 window.addEventListener('load',()=>{
   loadCfg();
+  pruneOldImages();
   startGPS();
   startSensor();
   $('segSlider')?.addEventListener('input',function(){set('segValLbl',this.value+' m');});
