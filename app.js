@@ -1157,13 +1157,6 @@ function showRouteNameModal(){
     modal.classList.remove('hidden');
   }
   updateNoiseFilterUI();
-  const galBtn=$('galOpenBtn');
-  if(galBtn){
-    const n=GAL.items.length;
-    galBtn.textContent='📷 Validar eventos'+
-      (n>0?' ('+n+')':'');
-    galBtn.style.display=n>0?'block':'none';
-  }
 }
 function collectComfortData(){
   const cf=S.comfort;
@@ -1579,7 +1572,7 @@ function doXLSX(r){
 
   // Urban sheet — usar copia live si es la ruta recién guardada
   if(modes.includes('urban')&&r.urbanData?.events?.length){
-    const liveRoute=(S._lastSavedRouteWithBlobs?.id===r.id)?S._lastSavedRouteWithBlobs:r;
+    const liveRoute=(S._lastSavedRouteWithBlobs?.id===r.id&&S._lastSavedRouteWithBlobs?.urbanData?.events?.some(e=>e._frameBlobs))?S._lastSavedRouteWithBlobs:r;
     const ev=liveRoute.urbanData?.events||r.urbanData.events;
     const uw=[['#','Fecha','Lat','Lon','Vel.(km/h)','Tipo','Severidad','Score','Confirmado','Tipo (Gemini)','Severidad (Gemini)','Confianza','Descripción IA','Validado por IA','Validación','Candidato a ruido']];
     ev.forEach((e,i)=>uw.push([i+1,fmtD(e.ts),(e.lat||0).toFixed(7),(e.lon||0).toFixed(7),(e.speed||0).toFixed(1),e.type||'',e.severity||'',+(e.score||0).toFixed(1),e.confirmed?'Sí':'No',e.gemini?.type||'',e.gemini?.severity||'',e.gemini?.confidence!=null?+(e.gemini.confidence*100).toFixed(0)+'%':'',e.gemini?.description||'',e.gemini?(!e.gemini.discard?'Sí':'No'):'',e.humanLabel||'Sin validar',e.noiseCandidate?'Sí':'No']));
@@ -1611,7 +1604,7 @@ function doXLSX(r){
   const ws3=XLSX.utils.aoa_to_sheet(sum);ws3['!cols']=[{wch:28},{wch:70}];XLSX.utils.book_append_sheet(wb,ws3,'Resumen');
 
   // Hoja AVISO cuando la validación está incompleta
-  const liveRouteXLSX=(S._lastSavedRouteWithBlobs?.id===r.id)?S._lastSavedRouteWithBlobs:r;
+  const liveRouteXLSX=(S._lastSavedRouteWithBlobs?.id===r.id&&S._lastSavedRouteWithBlobs?.urbanData?.events?.some(e=>e._frameBlobs))?S._lastSavedRouteWithBlobs:r;
   if(modes.includes('urban')&&!liveRouteXLSX.urbanData?.validationComplete){
     const warningRow=[{'AVISO':`⚠️ INFORME PRELIMINAR — ${liveRouteXLSX.urbanData?.pendingCount||0} eventos sin validar`}];
     const wsWarning=XLSX.utils.json_to_sheet(warningRow);
@@ -1630,7 +1623,8 @@ function getReportMode(session){
 async function expHTMLUrban(r){
   try{
   // Preferir la copia con blobs en memoria si es la sesión recién guardada
-  const liveRoute = (S._lastSavedRouteWithBlobs?.id === r.id)
+  const liveRoute = (S._lastSavedRouteWithBlobs?.id === r.id &&
+                    S._lastSavedRouteWithBlobs?.urbanData?.events?.some(e=>e._frameBlobs))
     ? S._lastSavedRouteWithBlobs : r;
   const events = liveRoute.urbanData?.events || [];
   if(!events.length){toast('Sin eventos urbanos');return;}
