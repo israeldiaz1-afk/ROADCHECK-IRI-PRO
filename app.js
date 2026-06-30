@@ -1758,6 +1758,11 @@ async function expHTMLUrban(r){
       e.humanLabel==='corrected'
     ).length
   );
+  console.log('[summary] check:',
+    'validationComplete=', liveRoute.urbanData?.validationComplete,
+    'validatedEvents=', validatedEvents?.length,
+    'condition=', !!(liveRoute.urbanData?.validationComplete && validatedEvents?.length > 0)
+  );
   const validatedSummary = (liveRoute.urbanData?.validationComplete && validatedEvents.length > 0)
     ? `<div style="margin-top:32px;border-top:2px solid #0EA5E9;padding-top:20px">
         <h2 style="font-size:1.1rem;color:#0EA5E9;margin-bottom:12px">✅ Resumen de eventos validados (${validatedEvents.length})</h2>
