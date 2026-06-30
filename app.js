@@ -3211,6 +3211,11 @@ function renderGalleryItem(idx){
       :'',
     event.geminiSuggestsDiscard
       ?'<span class="gal-badge" style="background:rgba(239,68,68,.15);color:#EF4444">🤖 IA sugiere falso positivo</span>'
+      :'',
+    event.yolo?.confirmed
+      ?`<span class="gal-badge" style="background:rgba(14,165,233,.15);color:#0EA5E9">🎯 YOLO: ${event.yolo.topClass} ${(event.yolo.topConf*100).toFixed(0)}%</span>`
+      :event.yolo?.detections
+      ?'<span class="gal-badge">🎯 YOLO: sin detección</span>'
       :''
   ].join('');
   $('galDesc').textContent=event.gemini?.description||'';
@@ -3250,6 +3255,30 @@ function drawGalleryCanvas(){
   ctx.translate(canvas.width/2+GAL.offsetX,canvas.height/2+GAL.offsetY);
   ctx.scale(GAL.scale,GAL.scale);
   ctx.drawImage(GAL.img,-GAL.img.width/2,-GAL.img.height/2,GAL.img.width,GAL.img.height);
+
+  const item=GAL.items[GAL.idx];
+  const detections=item?.event?.yolo?.detections;
+  if(detections&&detections.length>0){
+    const colors={
+      pothole:'#EF4444',alligator_crack:'#F97316',
+      longitudinal_crack:'#F59E0B',transverse_crack:'#EAB308',
+      manhole:'#8B5CF6'
+    };
+    detections.forEach(det=>{
+      const color=colors[det.className]||'#0EA5E9';
+      const x=det.x1-GAL.img.width/2;
+      const y=det.y1-GAL.img.height/2;
+      const w=det.x2-det.x1;
+      const h=det.y2-det.y1;
+      ctx.strokeStyle=color;
+      ctx.lineWidth=3/GAL.scale;
+      ctx.strokeRect(x,y,w,h);
+      ctx.fillStyle=color;
+      ctx.font=(14/GAL.scale)+'px monospace';
+      ctx.fillText(`${det.className} ${(det.conf*100).toFixed(0)}%`,x,y-(5/GAL.scale));
+    });
+  }
+
   ctx.restore();
 }
 function renderGalleryDots(activeIdx){
