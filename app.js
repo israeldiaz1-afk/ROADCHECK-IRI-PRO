@@ -1535,29 +1535,45 @@ function dlBlob(c, t, n) {
       }
     });
 
-  const b = new Blob([c], { type: t });
-  const url = URL.createObjectURL(b);
   const safeName = n.replace(/[\/\\:,*?"<>|]/g,'-')
                     .replace(/\s+/g,'_');
+  const b = new Blob([c], { type: t });
 
-  // Abrir directamente en nueva pestaña
-  // El usuario guarda desde el menú del navegador
-  window.open(url, '_blank');
+  // Intentar Web Share API con archivo (Android)
+  if (navigator.share && navigator.canShare) {
+    const file = new File([b], safeName, { type: t });
+    if (navigator.canShare({ files: [file] })) {
+      navigator.share({
+        title: 'Pavement Check — ' + safeName,
+        files: [file]
+      }).catch(e => {
+        if (e.name !== 'AbortError') {
+          // Fallback a descarga clásica si Web Share falla
+          triggerClassicDownload(b, safeName, t);
+        }
+      });
+      return;
+    }
+  }
 
-  // También mostrar el modal con el enlace
-  // como alternativa por si el popup está bloqueado
+  // Fallback: descarga clásica para PC o si
+  // Web Share no está disponible
+  triggerClassicDownload(b, safeName, t);
+}
+
+function triggerClassicDownload(blob, name, type) {
+  const url = URL.createObjectURL(blob);
   const link = $('downloadReadyLink');
   link.href = url;
-  link.download = safeName;
-  link.target = '_blank';
-  set('downloadReadyInfo',
-    safeName + '\n(Si no se abrió automáticamente, pulsa Descargar)');
+  link.download = name;
+  link.target = '_self';
+  set('downloadReadyInfo', name);
   $('downloadReadyModal').classList.remove('hidden');
-
   link.onclick = () => {
     setTimeout(() => {
       $('downloadReadyModal').classList.add('hidden');
-    }, 500);
+      URL.revokeObjectURL(url);
+    }, 2000);
   };
 }
 function expJSON(id){const r=allRoutes().find(r=>r.id===id);if(!r)return;dlBlob(JSON.stringify(r,null,2),'application/json','roadcheck_'+r.id.slice(-6)+'.json');toast('JSON exportado');}
@@ -1636,7 +1652,6 @@ function getReportMode(session){
   return'mixed';
 }
 async function expHTMLUrban(r){
-  console.log('[expHTMLUrban] iniciando, r.id=', r?.id);
   try{
   // Preferir la copia con blobs en memoria si es la sesión recién guardada
   const liveRoute = (S._lastSavedRouteWithBlobs?.id === r.id &&
@@ -1724,10 +1739,18 @@ async function expHTMLUrban(r){
      </div>`
     : '';
 
+  const eventsForMap = JSON.stringify(eventsWithImages.map(e => ({
+    lat: e.lat, lon: e.lon, type: e.type,
+    severity: e.severity, score: e.score,
+    humanLabel: e.humanLabel, id: e.id
+  })));
+
   const html=`<!DOCTYPE html><html lang="es"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Informe Urbano — Pavement Check</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
 <style>
 body{font-family:Segoe UI,sans-serif;margin:0;padding:16px;background:#f8f9fa;color:#1a1a2e}
 h1{font-size:1.4rem;color:#0EA5E9;margin-bottom:4px}
@@ -1763,11 +1786,71 @@ ${noiseCandidatesNote}
   <div class="stat"><div class="sv" style="color:#EF4444">${graves}</div><div class="sl">Graves</div></div>
   <div class="stat"><div class="sv" style="color:#10B981">${validated}</div><div class="sl">Validados</div></div>
 </div>
+<div style="margin-bottom:20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <h2 style="font-size:1rem;color:#0EA5E9;margin:0">📍 Mapa de eventos</h2>
+    <label style="font-size:.75rem;color:#666;display:flex;align-items:center;gap:4px">
+      <input type="checkbox" id="showOtherRoutes" onchange="toggleOtherRoutes(this.checked)">
+      Ver eventos de otras rutas
+    </label>
+  </div>
+  <div id="reportMap" style="height:300px;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0"></div>
+</div>
 <div class="cards">${rows}</div>
+<script>
+const ROUTE_EVENTS = ${eventsForMap};
+let OTHER_EVENTS = [];
+try {
+  const stored = JSON.parse(localStorage.getItem('rc_urban_events') || '[]');
+  OTHER_EVENTS = stored.filter(e => !ROUTE_EVENTS.find(r => r.id === e.id));
+} catch(e) {}
+const SEV_COLORS = { grave:'#EF4444', moderado:'#F97316', leve:'#F59E0B' };
+const TYPE_ICONS = { pothole:'🕳️', manhole:'⭕', speedbump:'⛰️', crack:'〰️', degraded:'🔴', patch:'🔧' };
+const map = L.map('reportMap');
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
+let currentMarkers = [];
+let otherMarkers = [];
+function addRouteMarkers() {
+  ROUTE_EVENTS.forEach((e,i) => {
+    if (!e.lat || !e.lon) return;
+    const color = SEV_COLORS[e.severity] || '#94a3b8';
+    const icon = L.divIcon({
+      html: '<div style="background:' + color + ';width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></div>',
+      iconSize:[14,14], iconAnchor:[7,7], className:''
+    });
+    const marker = L.marker([e.lat, e.lon], {icon});
+    marker.bindPopup('<b>' + (TYPE_ICONS[e.type]||'❓') + ' ' + (e.type||'—') + '</b><br>Severidad: ' + (e.severity||'—') + '<br>Score: ' + (e.score?.toFixed(0)||'—') + '<br>' + (e.humanLabel ? 'Validado: ' + e.humanLabel : '⏳ Sin validar'));
+    marker.addTo(map);
+    currentMarkers.push(marker);
+  });
+  if (currentMarkers.length > 0) {
+    const group = L.featureGroup(currentMarkers);
+    map.fitBounds(group.getBounds().pad(0.2));
+  }
+}
+function toggleOtherRoutes(show) {
+  if (show) {
+    OTHER_EVENTS.forEach(e => {
+      if (!e.lat || !e.lon) return;
+      const icon = L.divIcon({
+        html: '<div style="background:#94a3b8;width:10px;height:10px;border-radius:50%;border:2px solid #fff;opacity:0.6"></div>',
+        iconSize:[10,10], iconAnchor:[5,5], className:''
+      });
+      const marker = L.marker([e.lat, e.lon], {icon});
+      marker.bindPopup('<b>Otra ruta</b><br>' + (TYPE_ICONS[e.type]||'❓') + ' ' + (e.type||'—'));
+      marker.addTo(map);
+      otherMarkers.push(marker);
+    });
+  } else {
+    otherMarkers.forEach(m => map.removeLayer(m));
+    otherMarkers = [];
+  }
+}
+addRouteMarkers();
+<\/script>
 </body></html>`;
 
   const statusTag = liveRoute.urbanData?.validationComplete ? 'FINAL' : 'PRELIMINAR';
-  console.log('[expHTMLUrban] llamando dlBlob, html length=', html.length);
   dlBlob(html,'text/html','informe_urbano_'+statusTag+'_'+(r.name||'ruta').replace(/\s/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.html');
   }catch(e){console.error('[expHTMLUrban] ERROR:',e);toast('⚠️ Error generando informe: '+e.message);}
 }
