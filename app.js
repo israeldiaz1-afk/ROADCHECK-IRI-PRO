@@ -2764,6 +2764,89 @@ async function initYOLO() {
   YOLO_STATE.loading = false;
 }
 
+async function runYOLO(imageBlob) {
+  if (!YOLO_STATE.ready || !imageBlob) return null;
+
+  const img = new Image();
+  const url = URL.createObjectURL(imageBlob);
+  await new Promise((res, rej) => {
+    img.onload = res; img.onerror = rej; img.src = url;
+  });
+  URL.revokeObjectURL(url);
+
+  const SZ = YOLO_STATE.INPUT_SIZE;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = SZ;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, SZ, SZ);
+  const pixels = ctx.getImageData(0, 0, SZ, SZ).data;
+
+  const input = new Float32Array(3 * SZ * SZ);
+  for (let i = 0; i < SZ * SZ; i++) {
+    input[i]          = pixels[i*4]   / 255;
+    input[i + SZ*SZ]  = pixels[i*4+1] / 255;
+    input[i + 2*SZ*SZ]= pixels[i*4+2] / 255;
+  }
+
+  try {
+    const tensor = new ort.Tensor('float32', input, [1, 3, SZ, SZ]);
+    const results = await YOLO_STATE.session.run({ images: tensor });
+    return parseYOLOOutput(results, img.width, img.height);
+  } catch(e) {
+    console.log('[YOLO] Error inferencia: ' + e.message);
+    return null;
+  }
+}
+
+function parseYOLOOutput(results, origW, origH) {
+  const outputName = Object.keys(results)[0];
+  const data = results[outputName].data;
+  const numClasses = YOLO_STATE.CLASS_NAMES.length;
+  const numAnchors = data.length / (4 + numClasses);
+  const SZ = YOLO_STATE.INPUT_SIZE;
+  const detections = [];
+
+  for (let i = 0; i < numAnchors; i++) {
+    const off = i * (4 + numClasses);
+    const cx = data[off], cy = data[off+1];
+    const w  = data[off+2], h = data[off+3];
+    let maxConf = 0, maxClass = 0;
+    for (let c = 0; c < numClasses; c++) {
+      if (data[off+4+c] > maxConf) { maxConf = data[off+4+c]; maxClass = c; }
+    }
+    if (maxConf < YOLO_STATE.CONF_THRESHOLD) continue;
+    detections.push({
+      x1: (cx-w/2)*origW/SZ, y1: (cy-h/2)*origH/SZ,
+      x2: (cx+w/2)*origW/SZ, y2: (cy+h/2)*origH/SZ,
+      conf: maxConf, class: maxClass,
+      className: YOLO_STATE.CLASS_NAMES[maxClass]
+    });
+  }
+  return applyNMS(detections);
+}
+
+function applyNMS(dets) {
+  dets.sort((a,b) => b.conf - a.conf);
+  const keep = [], sup = new Set();
+  for (let i = 0; i < dets.length; i++) {
+    if (sup.has(i)) continue;
+    keep.push(dets[i]);
+    for (let j = i+1; j < dets.length; j++) {
+      if (!sup.has(j) && iouYolo(dets[i], dets[j]) > YOLO_STATE.NMS_THRESHOLD)
+        sup.add(j);
+    }
+  }
+  return keep;
+}
+
+function iouYolo(a, b) {
+  const ix1=Math.max(a.x1,b.x1), iy1=Math.max(a.y1,b.y1);
+  const ix2=Math.min(a.x2,b.x2), iy2=Math.min(a.y2,b.y2);
+  if (ix2<ix1||iy2<iy1) return 0;
+  const inter=(ix2-ix1)*(iy2-iy1);
+  return inter/((a.x2-a.x1)*(a.y2-a.y1)+(b.x2-b.x1)*(b.y2-b.y1)-inter);
+}
+
 async function initCameraSelector(){
   S.selectedCameraId=null;
   await startVideoBuffer();
