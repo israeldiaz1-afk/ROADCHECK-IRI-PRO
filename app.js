@@ -1625,6 +1625,7 @@ function getReportMode(session){
   return'mixed';
 }
 async function expHTMLUrban(r){
+  console.log('[expHTMLUrban] iniciando, r.id=', r?.id);
   try{
   // Preferir la copia con blobs en memoria si es la sesión recién guardada
   const liveRoute = (S._lastSavedRouteWithBlobs?.id === r.id &&
@@ -1755,6 +1756,7 @@ ${noiseCandidatesNote}
 </body></html>`;
 
   const statusTag = liveRoute.urbanData?.validationComplete ? 'FINAL' : 'PRELIMINAR';
+  console.log('[expHTMLUrban] llamando dlBlob, html length=', html.length);
   dlBlob(html,'text/html','informe_urbano_'+statusTag+'_'+(r.name||'ruta').replace(/\s/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.html');
   }catch(e){console.error('[expHTMLUrban] ERROR:',e);toast('⚠️ Error generando informe: '+e.message);}
 }
