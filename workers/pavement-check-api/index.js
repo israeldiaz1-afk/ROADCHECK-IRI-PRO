@@ -113,7 +113,17 @@ Criterios:
 - "discard": true si la imagen muestra asfalto en buen estado o la firma de vibración corresponde claramente a un frenazo (bipolaridad<0.1 y alta correlación con desaceleración longitudinal)
 - "type": "none" si no se identifica ningún desperfecto
 - "confidence": tu nivel de certeza sobre la clasificación
-- "severity": basada en la imagen visual combinada con la amplitud del sensor`;
+- "severity": basada en la imagen visual combinada con la amplitud del sensor
+
+IMPORTANTE: Responde ÚNICAMENTE con un objeto JSON válido con exactamente estos campos:
+{
+  "type": "pothole|crack|manhole|speedbump|degraded|patch|unknown",
+  "severity": "leve|moderado|grave",
+  "confidence": 0.0-1.0,
+  "description": "descripción breve en español",
+  "discard": true|false
+}
+No incluyas texto adicional, explicaciones ni bloques de código. Solo el JSON puro.`;
 
       try {
         const geminiRes = await fetch(
@@ -133,7 +143,39 @@ Criterios:
         const clean = rawText.replace(/```json|```/g, '').trim();
         let result;
         try { result = JSON.parse(clean); }
-        catch { result = { type: 'unknown', severity: 'leve', confidence: 0.3, description: 'Error de análisis', discard: false }; }
+        catch { result = {}; }
+
+        // Validar y rellenar campos faltantes
+        // con valores por defecto razonables
+        const VALID_TYPES = [
+          'pothole','crack','alligator_crack',
+          'longitudinal_crack','transverse_crack',
+          'manhole','speedbump','degraded',
+          'patch','unknown'
+        ];
+        const VALID_SEVS = ['leve','moderado','grave'];
+
+        result = {
+          type: VALID_TYPES.includes(result.type)
+            ? result.type : 'unknown',
+          severity: VALID_SEVS.includes(result.severity)
+            ? result.severity : 'leve',
+          confidence: (typeof result.confidence === 'number'
+            && result.confidence >= 0
+            && result.confidence <= 1)
+            ? result.confidence : 0.3,
+          description: (typeof result.description === 'string'
+            && result.description.length > 0)
+            ? result.description
+            : 'Sin descripción disponible',
+          discard: result.discard === true
+        };
+
+        // Si Gemini devolvió objeto vacío o campos
+        // inválidos, marcar confianza baja
+        if (!result.type || result.type === 'unknown') {
+          result.confidence = Math.min(result.confidence, 0.3);
+        }
 
         return new Response(JSON.stringify(result), { headers });
       } catch (e) {
