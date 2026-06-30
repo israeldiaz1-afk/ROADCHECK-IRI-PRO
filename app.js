@@ -1517,12 +1517,13 @@ function doXLSX(r){
     const ws2=XLSX.utils.aoa_to_sheet(sr);XLSX.utils.book_append_sheet(wb,ws2,'IRI_Segmentos');
   }
 
-  // Urban sheet
+  // Urban sheet — usar copia live si es la ruta recién guardada
   if(modes.includes('urban')&&r.urbanData?.events?.length){
-    const ev=r.urbanData.events;
-    const uw=[['#','Fecha','Lat','Lon','Vel.(km/h)','Tipo','Severidad','Score','Confirmado','Tipo (Gemini)','Severidad (Gemini)','Confianza','Descripción IA','Validado por IA']];
-    ev.forEach((e,i)=>uw.push([i+1,fmtD(e.ts),(e.lat||0).toFixed(7),(e.lon||0).toFixed(7),(e.speed||0).toFixed(1),e.type||'',e.severity||'',+(e.score||0).toFixed(1),e.confirmed?'Sí':'No',e.gemini?.type||'',e.gemini?.severity||'',e.gemini?.confidence!=null?+(e.gemini.confidence*100).toFixed(0)+'%':'',e.gemini?.description||'',e.gemini?(!e.gemini.discard?'Sí':'No'):'']));
-    const wsu=XLSX.utils.aoa_to_sheet(uw);wsu['!cols']=[{wch:5},{wch:18},{wch:13},{wch:13},{wch:11},{wch:12},{wch:11},{wch:8},{wch:11},{wch:14},{wch:18},{wch:11},{wch:32},{wch:14}];
+    const liveRoute=(S._lastSavedRouteWithBlobs?.id===r.id)?S._lastSavedRouteWithBlobs:r;
+    const ev=liveRoute.urbanData?.events||r.urbanData.events;
+    const uw=[['#','Fecha','Lat','Lon','Vel.(km/h)','Tipo','Severidad','Score','Confirmado','Tipo (Gemini)','Severidad (Gemini)','Confianza','Descripción IA','Validado por IA','Validación','Candidato a ruido']];
+    ev.forEach((e,i)=>uw.push([i+1,fmtD(e.ts),(e.lat||0).toFixed(7),(e.lon||0).toFixed(7),(e.speed||0).toFixed(1),e.type||'',e.severity||'',+(e.score||0).toFixed(1),e.confirmed?'Sí':'No',e.gemini?.type||'',e.gemini?.severity||'',e.gemini?.confidence!=null?+(e.gemini.confidence*100).toFixed(0)+'%':'',e.gemini?.description||'',e.gemini?(!e.gemini.discard?'Sí':'No'):'',e.humanLabel||'Sin validar',e.noiseCandidate?'Sí':'No']));
+    const wsu=XLSX.utils.aoa_to_sheet(uw);wsu['!cols']=[{wch:5},{wch:18},{wch:13},{wch:13},{wch:11},{wch:12},{wch:11},{wch:8},{wch:11},{wch:14},{wch:18},{wch:11},{wch:32},{wch:14},{wch:14},{wch:16}];
     XLSX.utils.book_append_sheet(wb,wsu,'Urbano_Eventos');
   }
 
@@ -1779,14 +1780,15 @@ function exportValidationDataset(){
 }
 
 // ─ urban exports ──────────────────────────────
-function exportUrbanEventsXLSX(){
-  let stored;
-  try{stored=JSON.parse(localStorage.getItem('rc_urban_events')||'[]');}catch(e){stored=[];}
-  if(!stored.length){toast('Sin eventos urbanos para exportar');return;}
+function exportUrbanEventsXLSX(r){
+  const liveRoute=(S._lastSavedRouteWithBlobs?.id===r?.id)
+    ?S._lastSavedRouteWithBlobs:r;
+  const events=liveRoute?.urbanData?.events;
+  if(!events?.length){toast('Sin eventos urbanos para exportar');return;}
   loadXLSX(()=>{
     const wb=XLSX.utils.book_new();
-    const rows=[['#','Fecha','Lat','Lon','Tipo','Severidad','Score','Confirmaciones','Velocidad (km/h)','Confirmado']];
-    stored.forEach((ev,i)=>{
+    const rows=[['#','Fecha','Lat','Lon','Tipo','Severidad','Score','Confirmaciones','Velocidad (km/h)','Confirmado','Validación','Tipo (Gemini)','Severidad (Gemini)','Confianza','Descripción IA','Candidato a ruido']];
+    events.forEach((ev,i)=>{
       rows.push([
         i+1,fmtD(ev.ts),
         (ev.lat||0).toFixed(7),(ev.lon||0).toFixed(7),
@@ -1794,21 +1796,29 @@ function exportUrbanEventsXLSX(){
         (ev.score||0).toFixed(1),
         ev.confirmCount||1,
         (ev.speed||0).toFixed(1),
-        ev.confirmed?'Sí':'No'
+        ev.confirmed?'Sí':'No',
+        ev.humanLabel||'Sin validar',
+        ev.gemini?.type||'—',
+        ev.gemini?.severity||'—',
+        ev.gemini?.confidence!=null?(ev.gemini.confidence*100).toFixed(0)+'%':'—',
+        ev.gemini?.description||'—',
+        ev.noiseCandidate?'Sí':'No'
       ]);
     });
     const ws=XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols']=[{wch:4},{wch:18},{wch:13},{wch:13},{wch:12},{wch:10},{wch:8},{wch:15},{wch:16},{wch:12}];
+    ws['!cols']=[{wch:4},{wch:18},{wch:13},{wch:13},{wch:12},{wch:10},{wch:8},{wch:15},{wch:16},{wch:12},{wch:14},{wch:14},{wch:18},{wch:11},{wch:32},{wch:16}];
     XLSX.utils.book_append_sheet(wb,ws,'Eventos');
-    const summary=[['ROADCHECK IRI — EVENTOS URBANOS'],[''],
-      ['Total eventos',stored.length],
-      ['Graves',stored.filter(e=>e.severity==='grave').length],
-      ['Moderados',stored.filter(e=>e.severity==='moderado').length],
-      ['Leves',stored.filter(e=>e.severity==='leve').length],
-      ['% Confirmados',(stored.filter(e=>e.confirmed).length/stored.length*100).toFixed(1)+'%'],
+    const summary=[['PAVEMENT CHECK — EVENTOS URBANOS'],[''],
+      ['Total eventos',events.length],
+      ['Graves',events.filter(e=>e.severity==='grave').length],
+      ['Moderados',events.filter(e=>e.severity==='moderado').length],
+      ['Leves',events.filter(e=>e.severity==='leve').length],
+      ['Validados (confirmados)',events.filter(e=>e.humanLabel==='confirmed').length],
+      ['Falsos positivos',events.filter(e=>e.humanLabel==='discarded').length],
+      ['Candidatos a ruido',events.filter(e=>e.noiseCandidate).length],
     ];
     const ws2=XLSX.utils.aoa_to_sheet(summary);
-    ws2['!cols']=[{wch:22},{wch:14}];
+    ws2['!cols']=[{wch:26},{wch:14}];
     XLSX.utils.book_append_sheet(wb,ws2,'Resumen');
     XLSX.writeFile(wb,'urban_eventos_'+Date.now().toString().slice(-6)+'.xlsx');
     toast('Excel de eventos exportado ✓');
