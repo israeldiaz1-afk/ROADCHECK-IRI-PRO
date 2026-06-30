@@ -579,7 +579,14 @@ function extractFeaturesAndScore(triggerTs){
   const brakeCorrelation=Math.min(1,ayAvg/3); // 3 m/s² ~ frenada fuerte
 
   const features={peakAmp,jerkMax,duration,bipolarity,freqEnergy,brakeCorrelation};
-  scoreAndClassify(features,triggerTs);
+
+  // Capturar ventana de vibración centrada en el pico — solo eje vertical calibrado
+  const wfStart = Math.max(0, peakIdx - 25);
+  const wfEnd = Math.min(window.length, peakIdx + 25);
+  const waveform = window.slice(wfStart, wfEnd)
+    .map(s => parseFloat(s.vert.toFixed(4)));
+
+  scoreAndClassify(features,triggerTs,waveform);
 }
 
 // ─ scoring & classification ───────────────────
@@ -607,7 +614,7 @@ function normalizeByVelocity(value,speedKmh){
   return value*Math.pow(vRefUrban/speedKmh,speedExponent);
 }
 
-function scoreAndClassify(features,triggerTs){
+function scoreAndClassify(features,triggerTs,waveform){
   const speed=S.lastPos?.speed||0;
   const ampNorm=Math.min(1,normalizeByVelocity(features.peakAmp,speed)/URBAN_TUNABLE.ampCeiling);
 
@@ -621,7 +628,7 @@ function scoreAndClassify(features,triggerTs){
     const bumpScore=Math.max(0,Math.min(100,ampNorm*100));
     if(bumpScore<15)return;
     const severity=bumpScore>=55?'moderado':'leve';
-    registerEvent({triggerTs,speed,severity,score:bumpScore,type,features});
+    registerEvent({triggerTs,speed,severity,score:bumpScore,type,features,waveform});
     return;
   }
 
@@ -643,7 +650,7 @@ function scoreAndClassify(features,triggerTs){
   if(score<URBAN_TUNABLE.scoreDiscardBelow)return;
 
   const severity=score>=URBAN_TUNABLE.severityGraveAt?'grave':score>=URBAN_TUNABLE.severityModerateAt?'moderado':'leve';
-  registerEvent({triggerTs,speed,severity,score,type,features});
+  registerEvent({triggerTs,speed,severity,score,type,features,waveform});
 }
 
 function classifyType(f){
@@ -653,7 +660,7 @@ function classifyType(f){
   return 'unknown';
 }
 
-function registerEvent({triggerTs,speed,severity,score,type,features}){
+function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   if(!S.lastPos)return;
   const pos=getBestPosition()||S.lastPos;
   const event={
@@ -661,6 +668,7 @@ function registerEvent({triggerTs,speed,severity,score,type,features}){
     ts:triggerTs,
     lat:pos.lat,lon:pos.lon,
     speed,type,severity,score,features,
+    waveform:waveform||[],
     confirmed:false,confirmCount:1
   };
   S.noiseFilter.eventMask=true;S.noiseFilter.eventMaskTs=Date.now();
@@ -1694,6 +1702,66 @@ async function expHTMLUrban(r){
     ? `<p style="color:#EAB308;font-size:.75rem">🟡 ${liveRoute.urbanData.noiseCandidatesMarked} evento(s) marcado(s) como candidato a ruido en su momento</p>`
     : '';
 
+  const buildWaveformSVG = (waveform, severity) => {
+    if (!waveform || waveform.length < 3) return '';
+    const W = 200, H = 60, PAD = 8;
+    const max = Math.max(...waveform.map(Math.abs), 0.5);
+    const pts = waveform.map((v, i) => {
+      const x = PAD + (i / (waveform.length-1)) * (W - PAD*2);
+      const y = H/2 - (v / max) * (H/2 - PAD);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    const peakI = waveform.reduce((b, v, i) => Math.abs(v) > Math.abs(waveform[b]) ? i : b, 0);
+    const px = PAD + (peakI/(waveform.length-1))*(W-PAD*2);
+    const py = H/2 - (waveform[peakI]/max)*(H/2-PAD);
+    const sevColor = severity==='grave' ? '#EF4444' : severity==='moderado' ? '#F97316' : '#F59E0B';
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;border-radius:4px;background:#f8fafc;margin-top:6px"><line x1="${PAD}" y1="${H/2}" x2="${W-PAD}" y2="${H/2}" stroke="#e2e8f0" stroke-width="1"/><polyline points="${pts}" fill="none" stroke="${sevColor}" stroke-width="1.5" stroke-linejoin="round"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3" fill="${sevColor}" stroke="#fff" stroke-width="1.5"/><text x="${px.toFixed(1)}" y="${Math.max(10,py-5).toFixed(1)}" text-anchor="middle" font-size="8" font-family="monospace" fill="${sevColor}">${Math.abs(waveform[peakI]).toFixed(2)}m/s\xB2</text></svg>`;
+  };
+
+  const validatedEvents = eventsWithImages.filter(e =>
+    e.humanLabel === 'confirmed' || e.humanLabel === 'corrected'
+  );
+  const validatedLeves = validatedEvents.filter(e=>e.severity==='leve').length;
+  const validatedModerados = validatedEvents.filter(e=>e.severity==='moderado').length;
+  const validatedGraves = validatedEvents.filter(e=>e.severity==='grave').length;
+  const validatedRows = validatedEvents.map((e,i) => {
+    const ic=typeIcons[e.type]||'❓';
+    const sc=sevColors[e.severity]||'#666';
+    const vb = e.humanLabel==='confirmed'
+      ? '<span class="ev val-ok">✅ Confirmado</span>'
+      : '<span class="ev val-ed">✏️ Corregido</span>';
+    return `<div class="card">
+      ${e.imgB64?`<img src="data:image/jpeg;base64,${e.imgB64}">`:'<div class="noi">📷 Sin imagen</div>'}
+      <div class="cb">
+        <div class="ch">
+          <span class="ct">${ic} ${e.type||'—'}</span>
+          <span class="cs" style="background:${sc}22;color:${sc}">${e.severity||'—'}</span>
+        </div>
+        <div class="cm">Score:${e.score?.toFixed(0)||'—'} · ${e.speed?.toFixed(0)||'—'}km/h · ${e.lat?.toFixed(5)||'—'},${e.lon?.toFixed(5)||'—'}</div>
+        ${buildWaveformSVG(e.waveform, e.severity)}
+        ${vb}
+      </div></div>`;
+  }).join('');
+  const validatedForMap = JSON.stringify(validatedEvents.map(e => ({
+    lat:e.lat, lon:e.lon, type:e.type, severity:e.severity, score:e.score,
+    humanLabel:e.humanLabel, id:e.id
+  })));
+  const validatedSummary = (liveRoute.urbanData?.validationComplete && validatedEvents.length > 0)
+    ? `<div style="margin-top:32px;border-top:2px solid #0EA5E9;padding-top:20px">
+        <h2 style="font-size:1.1rem;color:#0EA5E9;margin-bottom:12px">✅ Resumen de eventos validados (${validatedEvents.length})</h2>
+        <div class="stats">
+          <div class="stat"><div class="sv">${validatedEvents.length}</div><div class="sl">Total</div></div>
+          <div class="stat"><div class="sv" style="color:#F59E0B">${validatedLeves}</div><div class="sl">Leves</div></div>
+          <div class="stat"><div class="sv" style="color:#F97316">${validatedModerados}</div><div class="sl">Moderados</div></div>
+          <div class="stat"><div class="sv" style="color:#EF4444">${validatedGraves}</div><div class="sl">Graves</div></div>
+        </div>
+        <div style="margin-bottom:16px">
+          <div id="validatedMap" style="height:250px;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0"></div>
+        </div>
+        <div class="cards">${validatedRows}</div>
+      </div>`
+    : '';
+
   const rows = eventsWithImages.map((e,i) => {
     const ic=typeIcons[e.type]||'❓';
     const sc=sevColors[e.severity]||'#666';
@@ -1726,6 +1794,7 @@ async function expHTMLUrban(r){
         <div class="cm">Score:${e.score?.toFixed(0)||'—'} ·
           ${e.speed?.toFixed(0)||'—'}km/h ·
           ${e.lat?.toFixed(5)||'—'},${e.lon?.toFixed(5)||'—'}</div>
+        ${buildWaveformSVG(e.waveform, e.severity)}
         ${geminiInfo}
         ${vb} ${noiseBadge} ${geminiSuggest}
       </div></div>`;
@@ -1797,6 +1866,7 @@ ${noiseCandidatesNote}
   <div id="reportMap" style="height:300px;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0"></div>
 </div>
 <div class="cards">${rows}</div>
+${validatedSummary}
 <script>
 const ROUTE_EVENTS = ${eventsForMap};
 let OTHER_EVENTS = [];
@@ -1847,6 +1917,28 @@ function toggleOtherRoutes(show) {
   }
 }
 addRouteMarkers();
+const validatedMapEl = document.getElementById('validatedMap');
+if (validatedMapEl) {
+  const VALIDATED_EVENTS = ${validatedForMap};
+  const vmap = L.map('validatedMap');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(vmap);
+  const vMarkers = [];
+  VALIDATED_EVENTS.forEach(e => {
+    if (!e.lat || !e.lon) return;
+    const color = SEV_COLORS[e.severity] || '#94a3b8';
+    const icon = L.divIcon({
+      html: '<div style="background:' + color + ';width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></div>',
+      iconSize:[14,14], iconAnchor:[7,7], className:''
+    });
+    const marker = L.marker([e.lat, e.lon], {icon});
+    marker.bindPopup('<b>' + (TYPE_ICONS[e.type]||'❓') + ' ' + (e.type||'—') + '</b><br>Severidad: ' + (e.severity||'—') + '<br>' + (e.humanLabel==='confirmed'?'✅ Confirmado':'✏️ Corregido'));
+    marker.addTo(vmap);
+    vMarkers.push(marker);
+  });
+  if (vMarkers.length > 0) {
+    vmap.fitBounds(L.featureGroup(vMarkers).getBounds().pad(0.2));
+  }
+}
 <\/script>
 </body></html>`;
 
