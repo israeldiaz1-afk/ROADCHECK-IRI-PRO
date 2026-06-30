@@ -1628,6 +1628,9 @@ async function expHTMLUrban(r){
     const noiseBadge = e.noiseCandidate
       ? '<span class="ev" style="background:#EAB30822;color:#92400E">🟡 Candidato a ruido</span>'
       : '';
+    const geminiSuggest = e.geminiSuggestsDiscard
+      ? '<span class="ev" style="background:#EF444422;color:#991B1B">🤖 IA sugiere descarte</span>'
+      : '';
     const geminiInfo = e.gemini?.description
       ? `<div class="cd">🔍 "${e.gemini.description}" (conf. ${((e.gemini.confidence||0)*100).toFixed(0)}%)</div>`
       : '';
@@ -1645,7 +1648,7 @@ async function expHTMLUrban(r){
           ${e.speed?.toFixed(0)||'—'}km/h ·
           ${e.lat?.toFixed(5)||'—'},${e.lon?.toFixed(5)||'—'}</div>
         ${geminiInfo}
-        ${vb} ${noiseBadge}
+        ${vb} ${noiseBadge} ${geminiSuggest}
       </div></div>`;
   }).join('');
 
@@ -2416,9 +2419,9 @@ async function analyzeEventWithGemini(event,imageBlob){
     event.gemini=analysis;
     event.imageBlob=imageBlob;
     if(analysis.discard){
-      S.urbanEvents=S.urbanEvents.filter(e=>e.id!==event.id);
-      toast('🔍 Falso positivo descartado por análisis de imagen');
-      console.log('[Gemini] Descartado: '+analysis.description);
+      event.geminiSuggestsDiscard=true;
+      toast('🔍 IA sugiere falso positivo — revísalo en la galería');
+      console.log('[Gemini] Sugiere descarte: '+analysis.description);
     }else{
       if(analysis.type&&analysis.type!=='unknown')event.type=analysis.type;
       if(analysis.severity&&analysis.severity!=='none')event.severity=analysis.severity;
@@ -2736,6 +2739,9 @@ function renderGalleryItem(idx){
       :'<span class="gal-badge">Sin validar</span>',
     event.noiseCandidate
       ?'<span class="gal-badge" style="background:rgba(234,179,8,.2);color:#EAB308">🟡 Candidato a ruido</span>'
+      :'',
+    event.geminiSuggestsDiscard
+      ?'<span class="gal-badge" style="background:rgba(239,68,68,.15);color:#EF4444">🤖 IA sugiere falso positivo</span>'
       :''
   ].join('');
   $('galDesc').textContent=event.gemini?.description||'';
