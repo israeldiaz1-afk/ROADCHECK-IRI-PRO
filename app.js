@@ -1106,7 +1106,7 @@ function stopMeasurement(){
     vehicleId:iriData?.vehicleId||null,
     iriData,urbanData,comfortData
   };
-  showValidateModal();
+  showRouteNameModal();
 }
 function buildUrbanDataFinal() {
   if (!S.activeModes.has('urban')) return null;
