@@ -699,12 +699,34 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   addToGallery(event);
   if(frames.length>0) showEventThumbnail(event);
 
-  // Invocar Gemini con el frame nominal (B) o el primero disponible
+  // Invocar YOLO y Gemini en paralelo con el frame nominal (B) o el primero disponible
   if (event._frameBlob) {
-    analyzeEventWithGemini(event, event._frameBlob).then(result => {
+    if (YOLO_STATE.ready) {
+      runYOLO(event._frameBlob).then(detections => {
+        event.yolo = { detections: detections || [] };
+        if (detections && detections.length > 0) {
+          const best = detections.reduce((a,b) => a.conf>b.conf?a:b);
+          event.yolo.topClass = best.className;
+          event.yolo.topConf = best.conf;
+          event.yolo.confirmed = true;
+        } else {
+          event.yolo.confirmed = false;
+        }
+        queueUI('gallery_refresh', () => {
+          if (GAL.items.some(i => i.event.id === event.id)) {
+            renderGalleryItem(GAL.idx);
+          }
+        });
+      });
+    }
+
+    analyzeEventWithGemini(event, event._frameBlob, null).then(result => {
       if (!result) return;
       event.gemini = result;
       event.geminiConfirm = !result.discard;
+      if (result.discard) {
+        event.geminiSuggestsDiscard = true;
+      }
       queueUI('gallery_refresh', () => {
         if (GAL.items.some(i => i.event.id === event.id)) {
           renderGalleryItem(GAL.idx);
