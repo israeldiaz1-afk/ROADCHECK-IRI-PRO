@@ -1072,18 +1072,8 @@ function stopMeasurement(){
   let iriData=null,urbanData=null,comfortData=null;
 
   if(S.activeModes.has('urban')){
-    // Crear urbanData aunque events esté vacío
-    // para que la sesión siempre se guarde
-    const eventsClean=S.urbanEvents.map(
-      ({_frameBlobs,_frameBlob,_clipBlobs,...e})=>e
-    );
-    urbanData={
-      events:eventsClean,
-      count:eventsClean.length
-    };
-    if(eventsClean.length>0){
-      mergeEventsIntoStorage(eventsClean);
-    }
+    // Solo marcar como pendiente — se construirá en confirmSave() tras validación
+    urbanData={ pending: true };
     if(S.groundTruth&&S.groundTruth.length>0)
       showValidationResults();
   }
@@ -1114,6 +1104,25 @@ function stopMeasurement(){
   };
   showValidateModal();
 }
+function buildUrbanDataFinal() {
+  if (!S.activeModes.has('urban')) return null;
+
+  const eventsClean = S.urbanEvents.map(
+    ({_frameBlobs,_frameBlob,_clipBlobs,...e}) => e
+  );
+
+  if (eventsClean.length > 0) {
+    mergeEventsIntoStorage(eventsClean);
+  }
+
+  return {
+    events: eventsClean,
+    count: eventsClean.length,
+    noiseApplied: S.noiseFilter?.appliedPost || false,
+    noiseCandidatesMarked: S.urbanEvents.filter(e => e.noiseCandidate).length
+  };
+}
+
 function showValidateModal(){
   const n=GAL.items.length;
   if(n===0){showRouteNameModal();return;}
@@ -1160,8 +1169,24 @@ function collectComfortData(){
 function confirmSave(){
   if(!S.pendingRoute)return;
   const r=S.pendingRoute;
+
+  // Construir urbanData final AHORA, con todas las validaciones ya aplicadas
+  if (r.urbanData?.pending) {
+    r.urbanData = buildUrbanDataFinal() || {events:[],count:0};
+  }
+
   r.name=$('routeNameInput').value.trim()||fmtD(Date.parse(r.date));
   saveRoute(r);$('routeNameModal').classList.add('hidden');
+
+  // Mantener referencia con los _frameBlobs vivos para generar informe inmediato
+  S._lastSavedRouteWithBlobs = {
+    ...r,
+    urbanData: r.urbanData ? {
+      ...r.urbanData,
+      events: S.urbanEvents.map(e => ({...e}))
+    } : r.urbanData
+  };
+
   const modesUsed=r.modesUsed||['iri'];
   const parts=[];
   if(modesUsed.includes('iri')&&r.avgC!=null)parts.push('IRI '+r.avgC.toFixed(2)+' m/km');
