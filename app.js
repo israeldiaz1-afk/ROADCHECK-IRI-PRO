@@ -1047,6 +1047,9 @@ async function startMeasurement(){
   if(S.activeModes.has('urban')||S.activeModes.has('comfort')){
     initCameraSelector().catch(e=>console.log('[Cámara] Error en inicio: '+e.message));
   }
+  if(S.activeModes.has('urban')){
+    initYOLO();
+  }
   $('meas-sc').classList.remove('hidden');
   updateMeasPanel();
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
@@ -2724,6 +2727,42 @@ function updateUrbanMeasPanel(){
 
 // ─ Buffer de vídeo (Fase 2) ───────────────────
 const VIDEO_BUF={stream:null,video:null,canvas:null,ctx:null,frames:[],maxAgeMs:3000,capturing:false,captureInterval:null};
+
+const YOLO_STATE = {
+  session: null,
+  loading: false,
+  ready: false,
+  MODEL_URL: '/models/pavement_yolo11n.onnx',
+  INPUT_SIZE: 640,
+  CONF_THRESHOLD: 0.40,
+  NMS_THRESHOLD: 0.5,
+  CLASS_NAMES: [
+    'longitudinal_crack','transverse_crack','alligator_crack',
+    'pothole','manhole'
+  ]
+};
+
+async function initYOLO() {
+  if (YOLO_STATE.ready || YOLO_STATE.loading) return;
+  if (!window.ort) {
+    console.log('[YOLO] ONNX Runtime no disponible');
+    return;
+  }
+  YOLO_STATE.loading = true;
+  try {
+    ort.env.wasm.wasmPaths =
+      'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
+    YOLO_STATE.session = await ort.InferenceSession.create(
+      YOLO_STATE.MODEL_URL,
+      { executionProviders: ['wasm'], graphOptimizationLevel: 'all' }
+    );
+    YOLO_STATE.ready = true;
+    console.log('[YOLO] Modelo cargado OK');
+  } catch(e) {
+    console.log('[YOLO] No disponible: ' + e.message);
+  }
+  YOLO_STATE.loading = false;
+}
 
 async function initCameraSelector(){
   S.selectedCameraId=null;
