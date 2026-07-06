@@ -398,6 +398,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .gal-thumb-wrap{position:relative;flex-shrink:0}
 .gal-thumb-label{position:absolute;bottom:2px;left:50%;transform:translateX(-50%);font-size:.5rem;color:#fff;background:rgba(0,0,0,.5);padding:1px 4px;border-radius:3px;pointer-events:none;font-family:var(--mono)}
 .gal-info{padding:8px 14px;flex-shrink:0;border-top:1px solid rgba(14,165,233,.1)}
+.gal-kbd-hint{font-size:.62rem;color:var(--dim);font-family:var(--mono);margin-top:6px;padding-top:6px;border-top:1px dashed rgba(14,165,233,.15)}
 .gal-badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
 .gal-badge{font-size:var(--fs-xs);font-family:var(--mono);padding:2px 8px;border-radius:10px;background:var(--s2);color:var(--txt)}
 .gal-badge.confirmed{background:rgba(16,185,129,.2);color:#10B981}
@@ -600,6 +601,9 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
       <div class="gal-badges" id="galBadges"></div>
       <div class="gal-desc" id="galDesc"></div>
       <div class="gal-coords" id="galCoords"></div>
+      <div class="gal-kbd-hint" id="galKbdHint" style="display:none">
+        ⌨️ ← → navegar · 1 confirmar · 2 descartar · 3 corregir · rueda zoom · Esc cerrar
+      </div>
     </div>
     <div class="gal-actions">
       <button class="gal-btn gal-confirm" id="galBtnOk" onclick="validateEvent('confirmed')">✅ Correcto</button>

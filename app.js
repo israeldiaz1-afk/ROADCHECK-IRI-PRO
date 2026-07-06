@@ -3079,6 +3079,7 @@ function openGallery(startIdx=0){
   $('eventGalleryModal').classList.remove('hidden');
   renderGalleryItem(GAL.idx);
   initGalleryGestures();
+  initGalleryKeyboard();
 }
 async function continueValidation(routeId){
   // routeId puede venir del botón de la tarjeta o del dataset del botón del detalle
@@ -3146,6 +3147,7 @@ function saveValidationProgress(routeId){
 }
 
 function closeGallery(){
+  removeGalleryKeyboard();
   $('eventGalleryModal').classList.add('hidden');
   GAL.img=null;
 
@@ -3236,6 +3238,8 @@ function renderGalleryItem(idx){
   $('galCoords').textContent=event.lat?`📍 ${event.lat.toFixed(5)}, ${event.lon.toFixed(5)}`:'';
   const validated=!!event.humanLabel;
   $('galBtnOk').disabled=validated;$('galBtnEdit').disabled=validated;$('galBtnNo').disabled=validated;
+  const kbdHint=$('galKbdHint');
+  if(kbdHint){kbdHint.style.display=isTouchDevice()?'none':'block';}
 }
 function selectGalleryFrame(fi){
   const item=GAL.items[GAL.idx];if(!item)return;
@@ -3343,7 +3347,112 @@ function initGalleryGestures(){
     if(e.touches.length<2)GAL._lastTouchDist=null;
     if(e.touches.length===0)GAL._isDragging=false;
   });
+
+  c.addEventListener('wheel', e => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 1.15 : 0.87;
+    const oldScale = GAL.scale;
+    GAL.scale = Math.max(GAL.minScale, Math.min(GAL.maxScale, GAL.scale * delta));
+    if (GAL.scale !== oldScale && GAL.scale > 1) {
+      const rect = c.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left - rect.width/2;
+      const mouseY = e.clientY - rect.top - rect.height/2;
+      const scaleRatio = GAL.scale / oldScale;
+      GAL.offsetX = mouseX - (mouseX - GAL.offsetX) * scaleRatio;
+      GAL.offsetY = mouseY - (mouseY - GAL.offsetY) * scaleRatio;
+    }
+    if (GAL.scale <= 1) { GAL.offsetX = 0; GAL.offsetY = 0; }
+    drawGalleryCanvas();
+  }, { passive: false });
+
+  let mouseDragging = false;
+  let lastMouseX = 0, lastMouseY = 0;
+
+  c.addEventListener('mousedown', e => {
+    if (GAL.scale <= 1) return;
+    mouseDragging = true;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+    c.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (!mouseDragging) return;
+    const dx = e.clientX - lastMouseX;
+    const dy = e.clientY - lastMouseY;
+    const maxOff = (c.width * (GAL.scale - 1)) / 2;
+    GAL.offsetX = Math.max(-maxOff, Math.min(maxOff, GAL.offsetX + dx));
+    GAL.offsetY = Math.max(-maxOff, Math.min(maxOff, GAL.offsetY + dy));
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+    drawGalleryCanvas();
+  });
+
+  window.addEventListener('mouseup', () => {
+    mouseDragging = false;
+    c.style.cursor = GAL.scale > 1 ? 'grab' : 'default';
+  });
+
+  c.addEventListener('dblclick', e => {
+    GAL.scale = GAL.scale > 1.5 ? 1 : 3;
+    GAL.offsetX = 0;
+    GAL.offsetY = 0;
+    drawGalleryCanvas();
+  });
+
+  c.style.cursor = GAL.scale > 1 ? 'grab' : 'default';
 }
+function isTouchDevice() {
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+}
+
+let _galKeyHandler = null;
+
+function initGalleryKeyboard() {
+  if (_galKeyHandler) {
+    window.removeEventListener('keydown', _galKeyHandler);
+  }
+  _galKeyHandler = (e) => {
+    const modal = $('eventGalleryModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    if (document.activeElement?.tagName === 'INPUT') return;
+    switch(e.key) {
+      case 'ArrowLeft':
+        e.preventDefault(); galleryNav(-1); break;
+      case 'ArrowRight':
+        e.preventDefault(); galleryNav(1); break;
+      case '1':
+        e.preventDefault();
+        if (!$('galBtnOk')?.disabled) validateEvent('confirmed'); break;
+      case '2':
+        e.preventDefault();
+        if (!$('galBtnNo')?.disabled) validateEvent('discarded'); break;
+      case '3':
+        e.preventDefault();
+        if (!$('galBtnEdit')?.disabled) openTypeCorrector(); break;
+      case 'Escape':
+        e.preventDefault(); closeGallery(); break;
+      case '+': case '=':
+        e.preventDefault();
+        GAL.scale = Math.min(GAL.maxScale, GAL.scale * 1.2);
+        drawGalleryCanvas(); break;
+      case '-':
+        e.preventDefault();
+        GAL.scale = Math.max(GAL.minScale, GAL.scale * 0.8);
+        if (GAL.scale <= 1) { GAL.offsetX = 0; GAL.offsetY = 0; }
+        drawGalleryCanvas(); break;
+    }
+  };
+  window.addEventListener('keydown', _galKeyHandler);
+}
+
+function removeGalleryKeyboard() {
+  if (_galKeyHandler) {
+    window.removeEventListener('keydown', _galKeyHandler);
+    _galKeyHandler = null;
+  }
+}
+
 function getTouchDist(touches){
   const dx=touches[0].clientX-touches[1].clientX;
   const dy=touches[0].clientY-touches[1].clientY;
