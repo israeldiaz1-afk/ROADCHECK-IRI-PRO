@@ -2794,7 +2794,11 @@ async function initYOLO() {
       YOLO_STATE.ready = true;
       console.log('[YOLO] Modelo FP32 cargado OK');
     } catch(e2) {
-      console.log('[YOLO] No disponible: ' + e2.message);
+      console.log('[YOLO] Error completo:', e2);
+      console.log('[YOLO] Nombre:', e2.name);
+      console.log('[YOLO] Mensaje:', e2.message);
+      console.log('[YOLO] Stack:', e2.stack);
+      toast('⚠️ YOLO error: ' + e2.name + ' — ' + e2.message);
     }
   }
   YOLO_STATE.loading = false;
@@ -3679,14 +3683,18 @@ async function runAutoTests() {
 
   await test('YOLO carga e inicializa', async () => {
     if (!window.ort) return { ok: false, detail: 'ONNX Runtime no disponible' };
-    await initYOLO();
-    await new Promise(r => setTimeout(r, 5000));
-    return {
-      ok: YOLO_STATE.ready,
-      detail: YOLO_STATE.ready
-        ? 'Modelo listo para inferencia'
-        : 'No se pudo cargar — ver errores en consola'
-    };
+    try {
+      await initYOLO();
+      await new Promise(r => setTimeout(r, 8000));
+      return {
+        ok: YOLO_STATE.ready,
+        detail: YOLO_STATE.ready
+          ? 'Modelo listo'
+          : 'No cargó — revisa el toast de error'
+      };
+    } catch(e) {
+      return { ok: false, detail: e.name + ': ' + e.message };
+    }
   });
 
   await test('YOLO inferencia sobre imagen negra', async () => {
