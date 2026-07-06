@@ -2802,7 +2802,7 @@ async function initYOLO() {
     try {
       console.log('[YOLO] Intentando: ' + config.label);
       ort.env.wasm.wasmPaths =
-        'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
+        'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.3/dist/';
       YOLO_STATE.session = await ort.InferenceSession.create(
         config.url, config.opts
       );
