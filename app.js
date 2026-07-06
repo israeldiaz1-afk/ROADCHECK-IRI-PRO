@@ -2775,29 +2775,51 @@ async function initYOLO() {
     return;
   }
   YOLO_STATE.loading = true;
-  try {
-    ort.env.wasm.wasmPaths =
-      'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
-    YOLO_STATE.session = await ort.InferenceSession.create(
-      YOLO_STATE.MODEL_URL,
-      { executionProviders: ['wasm'], graphOptimizationLevel: 'all' }
-    );
-    YOLO_STATE.ready = true;
-    console.log('[YOLO] Modelo cargado OK');
-  } catch(e) {
-    console.log('[YOLO] INT8 falló, intentando FP32: ' + e.message);
+
+  // Intentar con diferentes configuraciones
+  const configs = [
+    {
+      url: '/models/pavement_yolo11n_fp32.onnx',
+      opts: { executionProviders: ['wasm'],
+              graphOptimizationLevel: 'disabled' },
+      label: 'FP32 sin optimización'
+    },
+    {
+      url: '/models/pavement_yolo11n_fp32.onnx',
+      opts: { executionProviders: ['wasm'],
+              graphOptimizationLevel: 'all' },
+      label: 'FP32 con optimización'
+    },
+    {
+      url: '/models/pavement_yolo11n.onnx',
+      opts: { executionProviders: ['wasm'],
+              graphOptimizationLevel: 'disabled' },
+      label: 'INT8 sin optimización'
+    }
+  ];
+
+  for (const config of configs) {
     try {
+      console.log('[YOLO] Intentando: ' + config.label);
+      ort.env.wasm.wasmPaths =
+        'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
       YOLO_STATE.session = await ort.InferenceSession.create(
-        '/models/pavement_yolo11n_fp32.onnx',
-        { executionProviders: ['wasm'], graphOptimizationLevel: 'all' }
+        config.url, config.opts
       );
       YOLO_STATE.ready = true;
-      console.log('[YOLO] Modelo FP32 cargado OK');
-    } catch(e2) {
-      alert('YOLO ERROR:\n' + e2.name + '\n' + e2.message);
-      YOLO_STATE.loading = false;
+      YOLO_STATE.loadedConfig = config.label;
+      console.log('[YOLO] Cargado OK: ' + config.label);
+      break;
+    } catch(e) {
+      console.log('[YOLO] Falló ' + config.label + ': ' + e.message);
     }
   }
+
+  if (!YOLO_STATE.ready) {
+    console.log('[YOLO] Todos los intentos fallaron');
+    toast('⚠️ YOLO no disponible en este dispositivo');
+  }
+
   YOLO_STATE.loading = false;
 }
 
