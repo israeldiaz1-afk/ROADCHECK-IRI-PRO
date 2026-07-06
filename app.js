@@ -2794,7 +2794,8 @@ async function initYOLO() {
       YOLO_STATE.ready = true;
       console.log('[YOLO] Modelo FP32 cargado OK');
     } catch(e2) {
-      console.log('[YOLO] No disponible: ' + e2.message);
+      alert('YOLO ERROR:\n' + e2.name + '\n' + e2.message);
+      YOLO_STATE.loading = false;
     }
   }
   YOLO_STATE.loading = false;
