@@ -3409,3 +3409,100 @@ async function fetchNetworkEvents(lat,lon,radiusM=500){
     return await r.json();
   }catch{return[];}
 }
+
+async function runAutoTests() {
+  const results = [];
+
+  const check = (name, fn) => async () => {
+    try {
+      const ok = await fn();
+      results.push({ name, ok, msg: ok ? '✅' : '❌' });
+    } catch(e) {
+      results.push({ name, ok: false, msg: '❌ ' + e.message });
+    }
+  };
+
+  // Test 1: ONNX Runtime disponible
+  await check('ONNX Runtime', () => !!window.ort)();
+
+  // Test 2: Modelo YOLO carga
+  await check('YOLO modelo', async () => {
+    if (!window.ort) return false;
+    const session = await ort.InferenceSession.create(
+      '/models/pavement_yolo11n.onnx',
+      { executionProviders: ['wasm'] }
+    );
+    return !!session;
+  })();
+
+  // Test 3: YOLO_STATE.ready tras initYOLO
+  await check('YOLO_STATE.ready', async () => {
+    await initYOLO();
+    await new Promise(r => setTimeout(r, 3000));
+    return YOLO_STATE.ready;
+  })();
+
+  // Test 4: IndexedDB disponible
+  await check('IndexedDB', async () => {
+    const db = await openImageDB();
+    return !!db;
+  })();
+
+  // Test 5: Worker Gemini responde
+  await check('Worker Gemini', async () => {
+    const res = await fetch(WORKER_URL + '/api/health');
+    return res.ok;
+  })();
+
+  // Test 6: Cámara disponible
+  await check('Cámara', async () => {
+    const stream = await navigator.mediaDevices
+      .getUserMedia({ video: true, audio: false });
+    stream.getTracks().forEach(t => t.stop());
+    return true;
+  })();
+
+  // Mostrar resultados en overlay
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:99999;
+    background:rgba(5,17,31,.95);
+    display:flex;flex-direction:column;
+    padding:20px;overflow-y:auto;
+    font-family:monospace;
+  `;
+  overlay.innerHTML = `
+    <div style="color:#0EA5E9;font-size:1.1rem;
+                font-weight:700;margin-bottom:16px">
+      🔬 Pavement Check — Autotest
+    </div>
+    ${results.map(r => `
+      <div style="padding:10px;margin-bottom:8px;
+                  border-radius:8px;font-size:.85rem;
+                  background:${r.ok
+                    ? 'rgba(16,185,129,.1)'
+                    : 'rgba(239,68,68,.1)'};
+                  border:1px solid ${r.ok
+                    ? 'rgba(16,185,129,.3)'
+                    : 'rgba(239,68,68,.3)'}">
+        ${r.msg} ${r.name}
+      </div>
+    `).join('')}
+    <button onclick="this.parentNode.remove()"
+            style="margin-top:16px;padding:12px;
+                   background:#0EA5E9;color:#05111F;
+                   border:none;border-radius:8px;
+                   font-weight:700;cursor:pointer;
+                   font-size:.9rem">
+      Cerrar
+    </button>
+  `;
+  document.body.appendChild(overlay);
+}
+
+// Activar con ?autotest en la URL
+if (new URLSearchParams(window.location.search).has('autotest')) {
+  window.addEventListener('load', () => {
+    setTimeout(runAutoTests, 1000);
+  });
+}
