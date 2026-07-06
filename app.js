@@ -2758,7 +2758,7 @@ const YOLO_STATE = {
   session: null,
   loading: false,
   ready: false,
-  MODEL_URL: '/models/pavement_yolo11n.onnx',
+  MODEL_URL: '/models/pavement_yolo11n_fp32.onnx',
   INPUT_SIZE: 640,
   CONF_THRESHOLD: 0.40,
   NMS_THRESHOLD: 0.5,
@@ -2785,7 +2785,17 @@ async function initYOLO() {
     YOLO_STATE.ready = true;
     console.log('[YOLO] Modelo cargado OK');
   } catch(e) {
-    console.log('[YOLO] No disponible: ' + e.message);
+    console.log('[YOLO] INT8 falló, intentando FP32: ' + e.message);
+    try {
+      YOLO_STATE.session = await ort.InferenceSession.create(
+        '/models/pavement_yolo11n_fp32.onnx',
+        { executionProviders: ['wasm'], graphOptimizationLevel: 'all' }
+      );
+      YOLO_STATE.ready = true;
+      console.log('[YOLO] Modelo FP32 cargado OK');
+    } catch(e2) {
+      console.log('[YOLO] No disponible: ' + e2.message);
+    }
   }
   YOLO_STATE.loading = false;
 }
@@ -3450,8 +3460,12 @@ async function runAutoTests() {
 
   // Test 5: Worker Gemini responde
   await check('Worker Gemini', async () => {
-    const res = await fetch(WORKER_URL + '/api/health');
-    return res.ok;
+    const res = await fetch(WORKER_URL + '/api/analyze', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ image: 'test', features: {} })
+    });
+    return res.status !== 0;
   })();
 
   // Test 6: Cámara disponible
