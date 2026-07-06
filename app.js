@@ -3530,102 +3530,372 @@ async function fetchNetworkEvents(lat,lon,radiusM=500){
 }
 
 async function runAutoTests() {
-  const results = [];
+  const panel = document.createElement('div');
+  panel.style.cssText = `
+    position:fixed;inset:0;z-index:99999;
+    background:var(--bg,#05111F);
+    display:flex;flex-direction:column;
+    font-family:var(--mono,monospace);
+    overflow:hidden;
+  `;
 
-  const check = (name, fn) => async () => {
+  const header = `
+    <div style="padding:16px 20px;background:var(--s1,#0a1628);
+                border-bottom:1px solid rgba(14,165,233,.2);
+                display:flex;justify-content:space-between;
+                align-items:center;flex-shrink:0">
+      <span style="color:#0EA5E9;font-weight:700;font-size:1rem">
+        🔬 Pavement Check — Test Suite
+      </span>
+      <button onclick="this.closest('div[style]').remove()"
+              style="background:none;border:none;color:#666;
+                     font-size:1.2rem;cursor:pointer">✕</button>
+    </div>`;
+
+  const body = document.createElement('div');
+  body.style.cssText = 'flex:1;overflow-y:auto;padding:16px 20px';
+  panel.innerHTML = header;
+  panel.appendChild(body);
+  document.body.appendChild(panel);
+
+  let passed = 0, failed = 0, warned = 0;
+
+  function addResult(name, status, detail = '') {
+    const colors = {
+      ok: { bg:'rgba(16,185,129,.1)', border:'rgba(16,185,129,.3)', icon:'✅' },
+      fail: { bg:'rgba(239,68,68,.1)', border:'rgba(239,68,68,.3)', icon:'❌' },
+      warn: { bg:'rgba(245,158,11,.1)', border:'rgba(245,158,11,.3)', icon:'⚠️' },
+      info: { bg:'rgba(14,165,233,.1)', border:'rgba(14,165,233,.3)', icon:'ℹ️' }
+    };
+    const c = colors[status] || colors.info;
+    const div = document.createElement('div');
+    div.style.cssText = `
+      padding:10px 12px;margin-bottom:6px;border-radius:8px;
+      font-size:.78rem;background:${c.bg};border:1px solid ${c.border}
+    `;
+    div.innerHTML = `<b>${c.icon} ${name}</b>${detail ? `<br><span style="color:#94a3b8;font-size:.7rem">${detail}</span>` : ''}`;
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+    if (status === 'ok') passed++;
+    if (status === 'fail') failed++;
+    if (status === 'warn') warned++;
+  }
+
+  function addSection(title) {
+    const div = document.createElement('div');
+    div.style.cssText = `
+      margin:14px 0 8px;color:#0EA5E9;font-size:.72rem;
+      font-weight:700;letter-spacing:1px;text-transform:uppercase;
+      border-bottom:1px solid rgba(14,165,233,.2);padding-bottom:4px;
+    `;
+    div.textContent = title;
+    body.appendChild(div);
+  }
+
+  async function test(name, fn, warnOnly = false) {
     try {
-      const ok = await fn();
-      results.push({ name, ok, msg: ok ? '✅' : '❌' });
+      const result = await fn();
+      addResult(name, result.ok ? 'ok' : (warnOnly ? 'warn' : 'fail'),
+        result.detail || result.error || '');
     } catch(e) {
-      results.push({ name, ok: false, msg: '❌ ' + e.message });
+      addResult(name, warnOnly ? 'warn' : 'fail', e.message);
     }
-  };
+  }
 
-  // Test 1: ONNX Runtime disponible
-  await check('ONNX Runtime', () => !!window.ort)();
+  // ═══════════════════════════════════════
+  // SECCIÓN 1: RUNTIME Y PERMISOS
+  // ═══════════════════════════════════════
+  addSection('Runtime y permisos');
 
-  // Test 2: Modelo YOLO carga
-  await check('YOLO modelo', async () => {
-    if (!window.ort) return false;
-    const session = await ort.InferenceSession.create(
-      '/models/pavement_yolo11n.onnx',
-      { executionProviders: ['wasm'] }
-    );
-    return !!session;
-  })();
+  await test('HTTPS activo', async () => ({
+    ok: location.protocol === 'https:',
+    detail: location.protocol
+  }));
 
-  // Test 3: YOLO_STATE.ready tras initYOLO
-  await check('YOLO_STATE.ready', async () => {
-    await initYOLO();
-    await new Promise(r => setTimeout(r, 3000));
-    return YOLO_STATE.ready;
-  })();
-
-  // Test 4: IndexedDB disponible
-  await check('IndexedDB', async () => {
+  await test('IndexedDB disponible', async () => {
     const db = await openImageDB();
-    return !!db;
-  })();
+    return { ok: !!db, detail: db ? 'Abierta correctamente' : 'No disponible' };
+  });
 
-  // Test 5: Worker Gemini responde
-  await check('Worker Gemini', async () => {
-    const res = await fetch(WORKER_URL + '/api/analyze', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ image: 'test', features: {} })
-    });
-    return res.status !== 0;
-  })();
+  await test('localStorage disponible', async () => {
+    localStorage.setItem('_test', '1');
+    const val = localStorage.getItem('_test');
+    localStorage.removeItem('_test');
+    return { ok: val === '1' };
+  });
 
-  // Test 6: Cámara disponible
-  await check('Cámara', async () => {
+  await test('Web Share API disponible', async () => ({
+    ok: !!navigator.share,
+    detail: navigator.share ? 'Disponible' : 'No disponible (PC normal)'
+  }), true);
+
+  await test('Permiso de cámara', async () => {
     const stream = await navigator.mediaDevices
       .getUserMedia({ video: true, audio: false });
     stream.getTracks().forEach(t => t.stop());
-    return true;
-  })();
+    return { ok: true, detail: 'Permiso concedido' };
+  });
 
-  // Mostrar resultados en overlay
-  const overlay = document.createElement('div');
-  overlay.style.cssText = `
-    position:fixed;inset:0;z-index:99999;
-    background:rgba(5,17,31,.95);
-    display:flex;flex-direction:column;
-    padding:20px;overflow-y:auto;
-    font-family:monospace;
+  await test('GPS disponible', async () => {
+    return new Promise(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        pos => resolve({
+          ok: true,
+          detail: `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)} ±${pos.coords.accuracy.toFixed(0)}m`
+        }),
+        err => resolve({ ok: false, detail: err.message }),
+        { timeout: 5000, maximumAge: 60000 }
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════
+  // SECCIÓN 2: MODELOS IA
+  // ═══════════════════════════════════════
+  addSection('Modelos IA');
+
+  await test('ONNX Runtime Web cargado', async () => ({
+    ok: !!window.ort,
+    detail: window.ort ? `v${ort.env.versions?.common || 'desconocida'}` : 'No disponible'
+  }));
+
+  await test('Modelo YOLO INT8 accesible', async () => {
+    const res = await fetch('/models/pavement_yolo11n.onnx', { method: 'HEAD' });
+    const size = res.headers.get('content-length');
+    return {
+      ok: res.ok,
+      detail: res.ok ? `${(size/1024/1024).toFixed(1)} MB` : `HTTP ${res.status}`
+    };
+  });
+
+  await test('Modelo YOLO FP32 accesible', async () => {
+    const res = await fetch('/models/pavement_yolo11n_fp32.onnx', { method: 'HEAD' });
+    const size = res.headers.get('content-length');
+    return {
+      ok: res.ok,
+      detail: res.ok ? `${(size/1024/1024).toFixed(1)} MB` : `HTTP ${res.status} — pendiente de subir`
+    };
+  }, true);
+
+  await test('YOLO carga e inicializa', async () => {
+    if (!window.ort) return { ok: false, detail: 'ONNX Runtime no disponible' };
+    await initYOLO();
+    await new Promise(r => setTimeout(r, 5000));
+    return {
+      ok: YOLO_STATE.ready,
+      detail: YOLO_STATE.ready
+        ? 'Modelo listo para inferencia'
+        : 'No se pudo cargar — ver errores en consola'
+    };
+  });
+
+  await test('YOLO inferencia sobre imagen negra', async () => {
+    if (!YOLO_STATE.ready) return { ok: false, detail: 'YOLO no está listo' };
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 640;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 640, 640);
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
+    const dets = await runYOLO(blob);
+    return {
+      ok: Array.isArray(dets),
+      detail: `${dets?.length || 0} detecciones (imagen negra → 0 esperado)`
+    };
+  });
+
+  // ═══════════════════════════════════════
+  // SECCIÓN 3: WORKER Y GEMINI
+  // ═══════════════════════════════════════
+  addSection('Worker y Gemini');
+
+  await test('Worker accesible', async () => {
+    const start = Date.now();
+    const res = await fetch(`${WORKER_URL}/api/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: 'dGVzdA==', features: {} })
+    });
+    const ms = Date.now() - start;
+    return {
+      ok: res.status < 500,
+      detail: `HTTP ${res.status} en ${ms}ms`
+    };
+  });
+
+  await test('Worker devuelve JSON válido', async () => {
+    const res = await fetch(`${WORKER_URL}/api/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image: 'dGVzdA==',
+        features: {
+          peakAmp: 2.5, jerkMax: 50,
+          duration: 120, bipolarity: 0.6,
+          freqEnergy: 0.3, speed: 30
+        }
+      })
+    });
+    const data = await res.json();
+    const fields = ['type','severity','confidence','description','discard'];
+    const hasAll = fields.every(k => k in data);
+    return {
+      ok: hasAll,
+      detail: hasAll
+        ? `type=${data.type} sev=${data.severity} conf=${data.confidence?.toFixed(2)} discard=${data.discard}`
+        : `Faltan campos: ${fields.filter(k => !(k in data)).join(', ')}`
+    };
+  });
+
+  await test('Gemini latencia < 5s', async () => {
+    const start = Date.now();
+    await fetch(`${WORKER_URL}/api/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: 'dGVzdA==', features: {} })
+    });
+    const ms = Date.now() - start;
+    return {
+      ok: ms < 5000,
+      detail: `${ms}ms ${ms < 2000 ? '(rápido)' : ms < 5000 ? '(aceptable)' : '(lento)'}`
+    };
+  });
+
+  // ═══════════════════════════════════════
+  // SECCIÓN 4: ALMACENAMIENTO
+  // ═══════════════════════════════════════
+  addSection('Almacenamiento');
+
+  await test('IndexedDB — escritura y lectura', async () => {
+    const testKey = '_test_' + Date.now();
+    const testBlob = new Blob(['test image data'], { type: 'image/jpeg' });
+    await saveImageBlob(testKey, testBlob);
+    const recovered = await getImageBlob(testKey);
+    await deleteImageBlobs([testKey]);
+    return {
+      ok: recovered instanceof Blob,
+      detail: recovered ? `Blob recuperado: ${recovered.size} bytes` : 'No se recuperó el blob'
+    };
+  });
+
+  await test('localStorage — rutas guardadas', async () => {
+    const routes = allRoutes();
+    const size = JSON.stringify(routes).length;
+    return {
+      ok: true,
+      detail: `${routes.length} rutas · ${(size/1024).toFixed(1)} KB usados`
+    };
+  });
+
+  await test('localStorage — espacio disponible', async () => {
+    try {
+      const total = 5 * 1024 * 1024; // 5MB límite típico
+      let used = 0;
+      for (let key in localStorage) {
+        if (localStorage.hasOwnProperty(key)) {
+          used += localStorage[key].length * 2; // UTF-16
+        }
+      }
+      const pct = (used / total * 100).toFixed(1);
+      return {
+        ok: used < total * 0.8,
+        detail: `${(used/1024).toFixed(0)} KB / 5000 KB (${pct}%)`
+      };
+    } catch(e) {
+      return { ok: false, detail: e.message };
+    }
+  });
+
+  // ═══════════════════════════════════════
+  // SECCIÓN 5: VÍDEO Y CÁMARA
+  // ═══════════════════════════════════════
+  addSection('Vídeo y cámara');
+
+  await test('Cámara trasera disponible', async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }, audio: false
+    });
+    const track = stream.getVideoTracks()[0];
+    const label = track.label;
+    const settings = track.getSettings();
+    stream.getTracks().forEach(t => t.stop());
+    return {
+      ok: true,
+      detail: `${label} · ${settings.width}×${settings.height}`
+    };
+  });
+
+  await test('Buffer de vídeo — captura frames', async () => {
+    if (VIDEO_BUF.capturing) {
+      return {
+        ok: true,
+        detail: `Buffer activo · ${VIDEO_BUF.frames.length} frames en buffer`
+      };
+    }
+    return {
+      ok: false,
+      detail: 'Buffer no activo — iniciar sesión urbana primero'
+    };
+  }, true);
+
+  // ═══════════════════════════════════════
+  // SECCIÓN 6: LÓGICA DE ALGORITMOS
+  // ═══════════════════════════════════════
+  addSection('Lógica de algoritmos');
+
+  await test('calcFrameDelay a 30 km/h (~540ms)', async () => {
+    const d = calcFrameDelay(30);
+    return {
+      ok: Math.abs(d - 540) < 50,
+      detail: `${d.toFixed(0)}ms (esperado ~540ms)`
+    };
+  });
+
+  await test('calcFrameDelay nunca supera buffer', async () => {
+    const d = calcFrameDelay(1);
+    return {
+      ok: d <= 2550,
+      detail: `${d.toFixed(0)}ms <= 2550ms`
+    };
+  });
+
+  await test('Calibración activa', async () => ({
+    ok: S.calibrated,
+    detail: S.calibrated
+      ? `gravMag=${S.gravMag?.toFixed(3)} g=${S.grav?.x?.toFixed(3)},${S.grav?.y?.toFixed(3)},${S.grav?.z?.toFixed(3)}`
+      : 'No calibrado — calibrar primero'
+  }), true);
+
+  await test('Acelerómetro funcionando', async () => ({
+    ok: S.sensorOK,
+    detail: S.sensorOK ? 'Sensor activo' : 'Sensor no disponible'
+  }));
+
+  // ═══════════════════════════════════════
+  // RESUMEN FINAL
+  // ═══════════════════════════════════════
+  const summary = document.createElement('div');
+  summary.style.cssText = `
+    margin-top:16px;padding:14px;border-radius:10px;
+    background:${failed===0 ? 'rgba(16,185,129,.15)' : 'rgba(239,68,68,.1)'};
+    border:1px solid ${failed===0 ? 'rgba(16,185,129,.3)' : 'rgba(239,68,68,.3)'};
+    font-size:.85rem;text-align:center;
   `;
-  overlay.innerHTML = `
-    <div style="color:#0EA5E9;font-size:1.1rem;
-                font-weight:700;margin-bottom:16px">
-      🔬 Pavement Check — Autotest
+  summary.innerHTML = `
+    <div style="font-size:1.1rem;margin-bottom:4px">
+      ${failed===0 ? '🎉' : '⚠️'}
     </div>
-    ${results.map(r => `
-      <div style="padding:10px;margin-bottom:8px;
-                  border-radius:8px;font-size:.85rem;
-                  background:${r.ok
-                    ? 'rgba(16,185,129,.1)'
-                    : 'rgba(239,68,68,.1)'};
-                  border:1px solid ${r.ok
-                    ? 'rgba(16,185,129,.3)'
-                    : 'rgba(239,68,68,.3)'}">
-        ${r.msg} ${r.name}
-      </div>
-    `).join('')}
-    <button onclick="this.parentNode.remove()"
-            style="margin-top:16px;padding:12px;
-                   background:#0EA5E9;color:#05111F;
-                   border:none;border-radius:8px;
-                   font-weight:700;cursor:pointer;
-                   font-size:.9rem">
-      Cerrar
-    </button>
+    <b>${passed} pasadas · ${failed} fallidas · ${warned} advertencias</b>
+    <br>
+    <span style="color:#94a3b8;font-size:.72rem">
+      ${new Date().toLocaleString('es-ES')}
+    </span>
   `;
-  document.body.appendChild(overlay);
+  body.appendChild(summary);
 }
 
-// Activar con ?autotest en la URL
-if (new URLSearchParams(window.location.search).has('autotest')) {
-  window.addEventListener('load', () => {
-    setTimeout(runAutoTests, 1000);
-  });
+// Activar con ?test en la URL (mantener ?autotest por compatibilidad)
+const _urlParams = new URLSearchParams(window.location.search);
+if (_urlParams.has('test') || _urlParams.has('autotest')) {
+  window.addEventListener('load', () => setTimeout(runAutoTests, 1500));
 }

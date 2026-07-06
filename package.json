@@ -1,0 +1,9 @@
+{
+  "name": "pavement-check",
+  "version": "1.0.0",
+  "scripts": {
+    "test:worker": "node tests/test-worker.js",
+    "test:logic": "node tests/test-logic.js",
+    "test:all": "node tests/test-worker.js && node tests/test-logic.js"
+  }
+}
