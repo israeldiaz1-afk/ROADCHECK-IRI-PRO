@@ -2781,7 +2781,15 @@ async function initYOLO() {
       'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.3/dist/';
 
     const response = await fetch(YOLO_STATE.MODEL_URL);
+    const contentType = response.headers.get('content-type');
+    const contentLength = response.headers.get('content-length');
+    const status = response.status;
+    alert('HTTP ' + status +
+          '\nContent-Type: ' + contentType +
+          '\nContent-Length: ' + contentLength +
+          '\nURL: ' + YOLO_STATE.MODEL_URL);
     const buffer = await response.arrayBuffer();
+    alert('Buffer real: ' + buffer.byteLength + ' bytes');
     console.log('[YOLO] Descargado:', buffer.byteLength, 'bytes');
     alert('[YOLO] Archivo descargado: ' + buffer.byteLength + ' bytes');
 
