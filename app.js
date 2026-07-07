@@ -1593,19 +1593,21 @@ function dlBlob(c, t, n) {
 }
 
 function triggerClassicDownload(blob, name, type) {
-  const url = URL.createObjectURL(blob);
-  const link = $('downloadReadyLink');
+  // Crear URL fresca cada vez — nunca reutilizar
+  const url = URL.createObjectURL(
+    new Blob([blob], { type })
+  );
+  const link = document.createElement('a');
   link.href = url;
   link.download = name;
-  link.target = '_self';
-  set('downloadReadyInfo', name);
-  $('downloadReadyModal').classList.remove('hidden');
-  link.onclick = () => {
-    setTimeout(() => {
-      $('downloadReadyModal').classList.add('hidden');
-      URL.revokeObjectURL(url);
-    }, 2000);
-  };
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  // Revocar después de un tiempo generoso
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    link.remove();
+  }, 5000);
 }
 function expJSON(id){const r=allRoutes().find(r=>r.id===id);if(!r)return;dlBlob(JSON.stringify(r,null,2),'application/json','roadcheck_'+r.id.slice(-6)+'.json');toast('JSON exportado');}
 function expKML(id){
@@ -2201,6 +2203,106 @@ async function importFullDataset(file) {
 async function base64ToBlob(b64, type) {
   const res = await fetch('data:' + type + ';base64,' + b64);
   return res.blob();
+}
+
+// ─ Exportación selectiva de rutas ─────────────
+function openExportModal() {
+  const routes = allRoutes();
+  if (!routes.length) {
+    toast('Sin rutas guardadas');
+    return;
+  }
+  const list = $('exportRouteList');
+  list.innerHTML = routes.map(r => `
+    <label style="display:flex;align-items:center;
+                  gap:8px;padding:8px;
+                  background:var(--s2);
+                  border-radius:6px;cursor:pointer">
+      <input type="checkbox" value="${r.id}"
+             checked style="width:16px;height:16px">
+      <span style="flex:1;font-size:.75rem">
+        <b>${escH(r.name||fmtD(Date.parse(r.date)))}</b>
+        <span style="color:var(--dim);font-size:.68rem;
+                     display:block">
+          ${fmtD(Date.parse(r.date))} ·
+          ${r.urbanData?.events?.length||0} eventos ·
+          ${r.urbanData?.validationComplete
+            ? '✅ Validada' : '⏳ Pendiente'}
+        </span>
+      </span>
+    </label>
+  `).join('');
+  $('exportSelectModal').classList.remove('hidden');
+}
+
+function toggleAllExportRoutes(check) {
+  $('exportRouteList')
+    .querySelectorAll('input[type=checkbox]')
+    .forEach(cb => cb.checked = check);
+}
+
+async function confirmExportSelected() {
+  const selected = [...$('exportRouteList')
+    .querySelectorAll('input[type=checkbox]:checked')]
+    .map(cb => cb.value);
+
+  if (!selected.length) {
+    toast('Selecciona al menos una ruta');
+    return;
+  }
+
+  $('exportSelectModal').classList.add('hidden');
+  toast('Preparando exportación...');
+
+  const routes = allRoutes()
+    .filter(r => selected.includes(r.id));
+
+  const routesWithImages = await Promise.all(
+    routes.map(async route => {
+      if (!route.urbanData?.events?.length) return route;
+      const eventsWithImages = await Promise.all(
+        route.urbanData.events.map(async event => {
+          const [bA,bB,bC] = await getImageBlobs([
+            event.id+'_A',event.id+'_B',event.id+'_C'
+          ]);
+          const images = {};
+          if (bA) images.A = await blobToBase64(bA);
+          if (bB) images.B = await blobToBase64(bB);
+          if (bC) images.C = await blobToBase64(bC);
+          return { ...event, _images: images };
+        })
+      );
+      return {
+        ...route,
+        urbanData: { ...route.urbanData, events: eventsWithImages }
+      };
+    })
+  );
+
+  const trainingDataset = JSON.parse(
+    localStorage.getItem('rc_training_dataset')||'[]'
+  ).filter(e => selected.some(id =>
+    routes.find(r =>
+      r.urbanData?.events?.some(ev => ev.id === e.id)
+    )
+  ));
+
+  const exportData = {
+    version: 2,
+    exportDate: new Date().toISOString(),
+    deviceId: S.vehicleId || 'unknown',
+    routes: routesWithImages,
+    trainingDataset,
+    urbanEvents: []
+  };
+
+  const json = JSON.stringify(exportData);
+  const sizeMB = (json.length/1024/1024).toFixed(1);
+  toast(`Exportando ${selected.length} rutas · ${sizeMB} MB`);
+
+  dlBlob(json, 'application/json',
+    'pavement_export_' +
+    new Date().toISOString().slice(0,10) + '.json');
 }
 
 // ─ urban exports ──────────────────────────────
