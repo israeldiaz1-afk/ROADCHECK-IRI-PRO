@@ -2792,6 +2792,8 @@ async function initYOLO() {
     alert('Buffer real: ' + buffer.byteLength + ' bytes');
     console.log('[YOLO] Descargado:', buffer.byteLength, 'bytes');
     alert('[YOLO] Archivo descargado: ' + buffer.byteLength + ' bytes');
+    alert('Buffer listo: ' + buffer.byteLength +
+          ' bytes — creando sesión ONNX...');
 
     // Crear sesión desde el buffer en vez de URL
     YOLO_STATE.session = await ort.InferenceSession.create(
@@ -2799,6 +2801,7 @@ async function initYOLO() {
       { executionProviders: ['wasm'],
         graphOptimizationLevel: 'disabled' }
     );
+    alert('✅ Sesión creada');
     alert('✅ Sesión ONNX creada correctamente');
     YOLO_STATE.ready = true;
     console.log('[YOLO] Cargado OK');
