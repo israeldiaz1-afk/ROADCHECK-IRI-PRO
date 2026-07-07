@@ -2781,19 +2781,8 @@ async function initYOLO() {
       'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.3/dist/';
 
     const response = await fetch(YOLO_STATE.MODEL_URL);
-    const contentType = response.headers.get('content-type');
-    const contentLength = response.headers.get('content-length');
-    const status = response.status;
-    alert('HTTP ' + status +
-          '\nContent-Type: ' + contentType +
-          '\nContent-Length: ' + contentLength +
-          '\nURL: ' + YOLO_STATE.MODEL_URL);
     const buffer = await response.arrayBuffer();
-    alert('Buffer real: ' + buffer.byteLength + ' bytes');
     console.log('[YOLO] Descargado:', buffer.byteLength, 'bytes');
-    alert('[YOLO] Archivo descargado: ' + buffer.byteLength + ' bytes');
-    alert('Buffer listo: ' + buffer.byteLength +
-          ' bytes — creando sesión ONNX...');
 
     // Crear sesión desde el buffer en vez de URL
     YOLO_STATE.session = await ort.InferenceSession.create(
@@ -2801,12 +2790,9 @@ async function initYOLO() {
       { executionProviders: ['wasm'],
         graphOptimizationLevel: 'disabled' }
     );
-    alert('✅ Sesión creada');
-    alert('✅ Sesión ONNX creada correctamente');
     YOLO_STATE.ready = true;
     console.log('[YOLO] Cargado OK');
   } catch(e) {
-    alert('❌ Error al crear sesión:\n' + e.name + '\n' + e.message);
     console.log('[YOLO] Falló: ' + e.message);
   }
 
@@ -3699,7 +3685,7 @@ async function runAutoTests() {
     if (!window.ort) return { ok: false, detail: 'ONNX Runtime no disponible' };
     try {
       await initYOLO();
-      await new Promise(r => setTimeout(r, 8000));
+      await new Promise(r => setTimeout(r, 15000));
       return {
         ok: YOLO_STATE.ready,
         detail: YOLO_STATE.ready
