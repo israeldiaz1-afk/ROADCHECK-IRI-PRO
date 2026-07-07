@@ -2768,29 +2768,6 @@ const YOLO_STATE = {
   ]
 };
 
-async function testONNXRuntime() {
-  try {
-    // Modelo ONNX mínimo: identidad y→y
-    // Generado inline sin archivo externo
-    const modelBytes = new Uint8Array([
-      8,7,18,4,116,101,115,116,40,0,
-      58,17,10,5,10,1,120,18,1,121,
-      26,8,73,100,101,110,116,105,116,
-      121,90,11,10,1,120,18,6,10,4,
-      8,1,18,0,98,11,10,1,121,18,6,
-      10,4,8,1,18,0,66,2,16,7
-    ]);
-    const session = await ort.InferenceSession.create(
-      modelBytes.buffer,
-      { executionProviders: ['wasm'] }
-    );
-    alert('ONNX Runtime Web FUNCIONA ✅');
-    session.release?.();
-  } catch(e) {
-    alert('ONNX Runtime Web falla: ' + e.message);
-  }
-}
-
 async function initYOLO() {
   if (YOLO_STATE.ready || YOLO_STATE.loading) return;
   if (!window.ort) {
@@ -2799,43 +2776,25 @@ async function initYOLO() {
   }
   YOLO_STATE.loading = true;
 
-  // Intentar con diferentes configuraciones
-  const configs = [
-    {
-      url: '/models/pavement_yolo11n_fp32.onnx',
-      opts: { executionProviders: ['wasm'],
-              graphOptimizationLevel: 'disabled' },
-      label: 'FP32 sin optimización'
-    },
-    {
-      url: '/models/pavement_yolo11n_fp32.onnx',
-      opts: { executionProviders: ['wasm'],
-              graphOptimizationLevel: 'all' },
-      label: 'FP32 con optimización'
-    },
-    {
-      url: '/models/pavement_yolo11n.onnx',
-      opts: { executionProviders: ['wasm'],
-              graphOptimizationLevel: 'disabled' },
-      label: 'INT8 sin optimización'
-    }
-  ];
+  try {
+    ort.env.wasm.wasmPaths =
+      'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.3/dist/';
 
-  for (const config of configs) {
-    try {
-      console.log('[YOLO] Intentando: ' + config.label);
-      ort.env.wasm.wasmPaths =
-        'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.3/dist/';
-      YOLO_STATE.session = await ort.InferenceSession.create(
-        config.url, config.opts
-      );
-      YOLO_STATE.ready = true;
-      YOLO_STATE.loadedConfig = config.label;
-      console.log('[YOLO] Cargado OK: ' + config.label);
-      break;
-    } catch(e) {
-      console.log('[YOLO] Falló ' + config.label + ': ' + e.message);
-    }
+    const response = await fetch(YOLO_STATE.MODEL_URL);
+    const buffer = await response.arrayBuffer();
+    console.log('[YOLO] Descargado:', buffer.byteLength, 'bytes');
+    alert('[YOLO] Archivo descargado: ' + buffer.byteLength + ' bytes');
+
+    // Crear sesión desde el buffer en vez de URL
+    YOLO_STATE.session = await ort.InferenceSession.create(
+      buffer,
+      { executionProviders: ['wasm'],
+        graphOptimizationLevel: 'disabled' }
+    );
+    YOLO_STATE.ready = true;
+    console.log('[YOLO] Cargado OK');
+  } catch(e) {
+    console.log('[YOLO] Falló: ' + e.message);
   }
 
   if (!YOLO_STATE.ready) {
@@ -3699,8 +3658,6 @@ async function runAutoTests() {
   // SECCIÓN 2: MODELOS IA
   // ═══════════════════════════════════════
   addSection('Modelos IA');
-
-  await testONNXRuntime();
 
   await test('ONNX Runtime Web cargado', async () => ({
     ok: !!window.ort,
