@@ -2799,9 +2799,11 @@ async function initYOLO() {
       { executionProviders: ['wasm'],
         graphOptimizationLevel: 'disabled' }
     );
+    alert('✅ Sesión ONNX creada correctamente');
     YOLO_STATE.ready = true;
     console.log('[YOLO] Cargado OK');
   } catch(e) {
+    alert('❌ Error al crear sesión:\n' + e.name + '\n' + e.message);
     console.log('[YOLO] Falló: ' + e.message);
   }
 
