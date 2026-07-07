@@ -1589,17 +1589,28 @@ function dlBlob(c, t, n) {
 }
 
 function triggerClassicDownload(blob, name, type) {
-  // Crear URL fresca cada vez — nunca reutilizar
-  const url = URL.createObjectURL(
-    new Blob([blob], { type })
-  );
+  if (type === 'application/json' ||
+      type === 'text/html') {
+    // Abrir en nueva pestaña — el usuario
+    // guarda desde el menú del navegador
+    // Funciona siempre sin bloqueo de Chrome
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    // Revocar después de 30s para dar tiempo
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    toast('📄 Abierto en nueva pestaña — ' +
+          'guarda con el menú del navegador');
+    return;
+  }
+
+  // Excel y otros binarios — descarga directa
+  const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = name;
   link.style.display = 'none';
   document.body.appendChild(link);
   link.click();
-  // Revocar después de un tiempo generoso
   setTimeout(() => {
     URL.revokeObjectURL(url);
     link.remove();
