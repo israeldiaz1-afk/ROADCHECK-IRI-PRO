@@ -1572,7 +1572,8 @@ function dlBlob(c, t, n) {
                     .replace(/\s+/g,'_');
   const b = new Blob([c], { type: t });
 
-  // Intentar Web Share API con archivo (Android)
+  // Web Share API para TODOS los tipos de archivo
+  // (HTML, JSON, Excel) — evita bloqueo de Chrome
   if (navigator.share && navigator.canShare) {
     const file = new File([b], safeName, { type: t });
     if (navigator.canShare({ files: [file] })) {
@@ -1581,7 +1582,6 @@ function dlBlob(c, t, n) {
         files: [file]
       }).catch(e => {
         if (e.name !== 'AbortError') {
-          // Fallback a descarga clásica si Web Share falla
           triggerClassicDownload(b, safeName, t);
         }
       });
@@ -1589,8 +1589,6 @@ function dlBlob(c, t, n) {
     }
   }
 
-  // Fallback: descarga clásica para PC o si
-  // Web Share no está disponible
   triggerClassicDownload(b, safeName, t);
 }
 
