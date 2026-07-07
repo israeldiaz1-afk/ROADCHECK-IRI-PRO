@@ -522,7 +522,35 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
     <!-- ══ HISTORIAL ══ -->
     <div id="tab-history" class="screen hidden">
       <div class="s-hdr"><span class="s-title">Historial de Rutas</span><div class="s-hdr-r"><button class="btn btn-xs btn-red" onclick="clearAllHistory()">Borrar todo</button></div></div>
+      <div style="display:flex;align-items:center;
+                  gap:8px;margin-bottom:8px">
+        <button onclick="switchTab('main')"
+                style="background:none;
+                       border:none;color:var(--sky);
+                       font-size:.8rem;cursor:pointer;
+                       padding:4px 0">
+          ← Inicio
+        </button>
+        <span style="color:var(--dim);font-size:.8rem">
+          / Historial
+        </span>
+      </div>
       <input type="text" class="hist-search" id="histSearch" placeholder="Buscar ruta…" oninput="filterHistory(this.value)">
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-sec"
+                style="flex:1;font-size:.72rem"
+                onclick="exportFullDataset()">
+          📤 Exportar historial
+        </button>
+        <label class="btn btn-sec"
+               style="flex:1;font-size:.72rem;
+                      text-align:center;cursor:pointer">
+          📥 Importar
+          <input type="file" accept=".json"
+                 style="display:none"
+                 onchange="importFullDataset(this.files[0])">
+        </label>
+      </div>
       <div id="histList" style="display:flex;flex-direction:column;gap:5px;flex:1">
         <div class="empty-st"><div class="empty-ico">🛣️</div><p class="empty-txt">Sin rutas guardadas.<br>Inicia una medición para comenzar.</p></div>
       </div>
