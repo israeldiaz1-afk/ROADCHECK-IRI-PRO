@@ -1581,12 +1581,23 @@ function dlBlob(c, t, n) {
   const url = URL.createObjectURL(blob);
   _dlUrl = url;
 
-  // Configurar el enlace que YA EXISTE en el DOM
-  const link = $('dlModalLink');
-  link.href = url;
-  link.download = safeName;
-  // Eliminar cualquier onclick anterior
-  link.onclick = null;
+  // Recrear el enlace completamente cada vez
+  // en vez de reutilizar el mismo elemento
+  const container = $('dlModalLink').parentNode;
+  const oldLink = $('dlModalLink');
+  const newLink = document.createElement('a');
+  newLink.id = 'dlModalLink';
+  newLink.className = oldLink.className;
+  newLink.style.cssText = oldLink.style.cssText;
+  newLink.href = url;
+  newLink.download = safeName;
+  newLink.textContent = '⬇️ Pulsa aquí para descargar';
+  newLink.onclick = () => {
+    setTimeout(() => {
+      $('dlModal').classList.add('hidden');
+    }, 500);
+  };
+  container.replaceChild(newLink, oldLink);
 
   set('dlModalName', safeName);
   $('dlModal').classList.remove('hidden');
