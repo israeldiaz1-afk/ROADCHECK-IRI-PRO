@@ -1589,25 +1589,36 @@ function dlBlob(c, t, n) {
 }
 
 function triggerClassicDownload(blob, name, type) {
-  if (type === 'application/json' ||
-      type === 'text/html') {
-    // Abrir en nueva pestaña — el usuario
-    // guarda desde el menú del navegador
-    // Funciona siempre sin bloqueo de Chrome
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-    // Revocar después de 30s para dar tiempo
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
-    toast('📄 Abierto en nueva pestaña — ' +
-          'guarda con el menú del navegador');
-    return;
-  }
+  // Para JSON: forzar descarga como binario
+  // para que Chrome lo descargue en vez de mostrarlo
+  const downloadType = type === 'application/json'
+    ? 'application/octet-stream'
+    : type;
 
-  // Excel y otros binarios — descarga directa
-  const url = URL.createObjectURL(blob);
+  if (navigator.share && navigator.canShare) {
+    const file = new File([blob], name,
+      { type: downloadType });
+    if (navigator.canShare({ files: [file] })) {
+      navigator.share({
+        title: 'Pavement Check — ' + name,
+        files: [file]
+      }).catch(e => {
+        if (e.name !== 'AbortError')
+          openInNewTab(blob, name, downloadType);
+      });
+      return;
+    }
+  }
+  openInNewTab(blob, name, downloadType);
+}
+
+function openInNewTab(blob, name, type) {
+  const b = new Blob([blob], { type });
+  const url = URL.createObjectURL(b);
   const link = document.createElement('a');
   link.href = url;
   link.download = name;
+  link.target = '_blank';
   link.style.display = 'none';
   document.body.appendChild(link);
   link.click();
