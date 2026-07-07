@@ -2768,6 +2768,29 @@ const YOLO_STATE = {
   ]
 };
 
+async function testONNXRuntime() {
+  try {
+    // Modelo ONNX mínimo: identidad y→y
+    // Generado inline sin archivo externo
+    const modelBytes = new Uint8Array([
+      8,7,18,4,116,101,115,116,40,0,
+      58,17,10,5,10,1,120,18,1,121,
+      26,8,73,100,101,110,116,105,116,
+      121,90,11,10,1,120,18,6,10,4,
+      8,1,18,0,98,11,10,1,121,18,6,
+      10,4,8,1,18,0,66,2,16,7
+    ]);
+    const session = await ort.InferenceSession.create(
+      modelBytes.buffer,
+      { executionProviders: ['wasm'] }
+    );
+    alert('ONNX Runtime Web FUNCIONA ✅');
+    session.release?.();
+  } catch(e) {
+    alert('ONNX Runtime Web falla: ' + e.message);
+  }
+}
+
 async function initYOLO() {
   if (YOLO_STATE.ready || YOLO_STATE.loading) return;
   if (!window.ort) {
@@ -3676,6 +3699,8 @@ async function runAutoTests() {
   // SECCIÓN 2: MODELOS IA
   // ═══════════════════════════════════════
   addSection('Modelos IA');
+
+  await testONNXRuntime();
 
   await test('ONNX Runtime Web cargado', async () => ({
     ok: !!window.ort,
