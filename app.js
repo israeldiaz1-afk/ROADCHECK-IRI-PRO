@@ -2081,54 +2081,62 @@ function exportValidationDataset(){
 
 // ─ Backup completo (rutas + imágenes) ─────────
 async function exportFullDataset() {
-  toast('Preparando exportación...');
-  const routes = allRoutes();
-  const trainingDataset = JSON.parse(
-    localStorage.getItem('rc_training_dataset') || '[]'
-  );
-  const urbanEvents = JSON.parse(
-    localStorage.getItem('rc_urban_events') || '[]'
-  );
+  try {
+    toast('Preparando exportación...');
+    const routes = allRoutes();
+    toast('Rutas: ' + routes.length);
 
-  // Recuperar imágenes de IndexedDB para cada evento
-  const routesWithImages = await Promise.all(
-    routes.map(async route => {
-      if (!route.urbanData?.events?.length) return route;
-      const eventsWithImages = await Promise.all(
-        route.urbanData.events.map(async event => {
-          const [bA, bB, bC] = await getImageBlobs([
-            event.id+'_A', event.id+'_B', event.id+'_C'
-          ]);
-          const images = {};
-          if (bA) images.A = await blobToBase64(bA);
-          if (bB) images.B = await blobToBase64(bB);
-          if (bC) images.C = await blobToBase64(bC);
-          return { ...event, _images: images };
-        })
-      );
-      return {
-        ...route,
-        urbanData: { ...route.urbanData, events: eventsWithImages }
-      };
-    })
-  );
+    const trainingDataset = JSON.parse(
+      localStorage.getItem('rc_training_dataset') || '[]'
+    );
+    const urbanEvents = JSON.parse(
+      localStorage.getItem('rc_urban_events') || '[]'
+    );
 
-  const exportData = {
-    version: 2,
-    exportDate: new Date().toISOString(),
-    deviceId: S.vehicleId || 'unknown',
-    routes: routesWithImages,
-    trainingDataset,
-    urbanEvents
-  };
+    // Recuperar imágenes de IndexedDB para cada evento
+    const routesWithImages = await Promise.all(
+      routes.map(async route => {
+        if (!route.urbanData?.events?.length) return route;
+        const eventsWithImages = await Promise.all(
+          route.urbanData.events.map(async event => {
+            const [bA, bB, bC] = await getImageBlobs([
+              event.id+'_A', event.id+'_B', event.id+'_C'
+            ]);
+            const images = {};
+            if (bA) images.A = await blobToBase64(bA);
+            if (bB) images.B = await blobToBase64(bB);
+            if (bC) images.C = await blobToBase64(bC);
+            return { ...event, _images: images };
+          })
+        );
+        return {
+          ...route,
+          urbanData: { ...route.urbanData, events: eventsWithImages }
+        };
+      })
+    );
 
-  const json = JSON.stringify(exportData);
-  const sizeMB = (json.length / 1024 / 1024).toFixed(1);
-  toast(`Exportando ${sizeMB} MB...`);
+    const exportData = {
+      version: 2,
+      exportDate: new Date().toISOString(),
+      deviceId: S.vehicleId || 'unknown',
+      routes: routesWithImages,
+      trainingDataset,
+      urbanEvents
+    };
 
-  dlBlob(json, 'application/json',
-    'pavement_check_backup_' +
-    new Date().toISOString().slice(0,10) + '.json');
+    const json = JSON.stringify(exportData);
+    const sizeMB = (json.length / 1024 / 1024).toFixed(1);
+    toast('Tamaño: ' + sizeMB + ' MB — compartiendo...');
+
+    dlBlob(json, 'application/json',
+      'pavement_check_backup_' +
+      new Date().toISOString().slice(0,10) + '.json');
+
+  } catch(e) {
+    console.error('[Export]', e);
+    toast('⚠️ Error exportando: ' + e.message);
+  }
 }
 
 async function importFullDataset(file) {
