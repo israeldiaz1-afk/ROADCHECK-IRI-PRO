@@ -1560,72 +1560,40 @@ function refreshVisor(){
 }
 
 // ─ Exports ────────────────────────────────────
+let _dlUrl = null;
+
 function dlBlob(c, t, n) {
+  // Cerrar cualquier modal abierto
   document.querySelectorAll('.modal-bg:not(.hidden)')
-    .forEach(m => m.classList.add('hidden'));
+    .forEach(m => {
+      if (m.id !== 'dlModal') m.classList.add('hidden');
+    });
+
+  // Liberar URL anterior
+  if (_dlUrl) {
+    try { URL.revokeObjectURL(_dlUrl); } catch(e) {}
+    _dlUrl = null;
+  }
 
   const safeName = n.replace(/[\/\\:,*?"<>|]/g,'-')
                     .replace(/\s+/g,'_');
-  const b = new Blob([c], { type: t });
+  const blob = new Blob([c], { type: t });
+  const url = URL.createObjectURL(blob);
+  _dlUrl = url;
 
-  // Web Share API para TODOS los tipos de archivo
-  // (HTML, JSON, Excel) — evita bloqueo de Chrome
-  if (navigator.share && navigator.canShare) {
-    const file = new File([b], safeName, { type: t });
-    if (navigator.canShare({ files: [file] })) {
-      navigator.share({
-        title: 'Pavement Check — ' + safeName,
-        files: [file]
-      }).catch(e => {
-        if (e.name !== 'AbortError') {
-          triggerClassicDownload(b, safeName, t);
-        }
-      });
-      return;
-    }
-  }
-
-  triggerClassicDownload(b, safeName, t);
-}
-
-function triggerClassicDownload(blob, name, type) {
-  // Para JSON: forzar descarga como binario
-  // para que Chrome lo descargue en vez de mostrarlo
-  const downloadType = type === 'application/json'
-    ? 'application/octet-stream'
-    : type;
-
-  if (navigator.share && navigator.canShare) {
-    const file = new File([blob], name,
-      { type: downloadType });
-    if (navigator.canShare({ files: [file] })) {
-      navigator.share({
-        title: 'Pavement Check — ' + name,
-        files: [file]
-      }).catch(e => {
-        if (e.name !== 'AbortError')
-          openInNewTab(blob, name, downloadType);
-      });
-      return;
-    }
-  }
-  openInNewTab(blob, name, downloadType);
-}
-
-function openInNewTab(blob, name, type) {
-  const b = new Blob([blob], { type });
-  const url = URL.createObjectURL(b);
-  const link = document.createElement('a');
+  // Configurar el enlace que YA EXISTE en el DOM
+  const link = $('dlModalLink');
   link.href = url;
-  link.download = name;
-  link.target = '_blank';
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-    link.remove();
-  }, 5000);
+  link.download = safeName;
+  // Eliminar cualquier onclick anterior
+  link.onclick = null;
+
+  set('dlModalName', safeName);
+  $('dlModal').classList.remove('hidden');
+}
+
+function closeDlModal() {
+  $('dlModal').classList.add('hidden');
 }
 function expJSON(id){const r=allRoutes().find(r=>r.id===id);if(!r)return;dlBlob(JSON.stringify(r,null,2),'application/json','roadcheck_'+r.id.slice(-6)+'.json');toast('JSON exportado');}
 function expKML(id){

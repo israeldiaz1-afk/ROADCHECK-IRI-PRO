@@ -817,5 +817,23 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
     </div>
   </div>
 </div>
+
+<div class="modal-bg hidden" id="dlModal">
+  <div class="modal">
+    <h3>📄 Archivo listo</h3>
+    <p class="sub" id="dlModalName"></p>
+    <div class="modal-btns" style="flex-direction:column;gap:8px">
+      <a id="dlModalLink"
+         class="btn btn-pri"
+         style="text-align:center;text-decoration:none;display:block">
+        ⬇️ Pulsa aquí para descargar
+      </a>
+      <button class="btn btn-sec"
+              onclick="closeDlModal()">
+        Cerrar
+      </button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
