@@ -1562,11 +1562,7 @@ function refreshVisor(){
 // ─ Exports ────────────────────────────────────
 function dlBlob(c, t, n) {
   document.querySelectorAll('.modal-bg:not(.hidden)')
-    .forEach(m => {
-      if (m.id !== 'downloadReadyModal') {
-        m.classList.add('hidden');
-      }
-    });
+    .forEach(m => m.classList.add('hidden'));
 
   const safeName = n.replace(/[\/\\:,*?"<>|]/g,'-')
                     .replace(/\s+/g,'_');
@@ -2077,66 +2073,6 @@ function exportValidationDataset(){
   const dataset={urbanEvents:S.urbanEvents,groundTruth:gt,comparisonResults:m,exportedAt:new Date().toISOString()};
   dlBlob(JSON.stringify(dataset,null,2),'application/json','validation_dataset_'+Date.now().toString().slice(-6)+'.json');
   toast('Dataset de validación exportado ✓');
-}
-
-// ─ Backup completo (rutas + imágenes) ─────────
-async function exportFullDataset() {
-  try {
-    toast('Preparando exportación...');
-    const routes = allRoutes();
-    toast('Rutas: ' + routes.length);
-
-    const trainingDataset = JSON.parse(
-      localStorage.getItem('rc_training_dataset') || '[]'
-    );
-    const urbanEvents = JSON.parse(
-      localStorage.getItem('rc_urban_events') || '[]'
-    );
-
-    // Recuperar imágenes de IndexedDB para cada evento
-    const routesWithImages = await Promise.all(
-      routes.map(async route => {
-        if (!route.urbanData?.events?.length) return route;
-        const eventsWithImages = await Promise.all(
-          route.urbanData.events.map(async event => {
-            const [bA, bB, bC] = await getImageBlobs([
-              event.id+'_A', event.id+'_B', event.id+'_C'
-            ]);
-            const images = {};
-            if (bA) images.A = await blobToBase64(bA);
-            if (bB) images.B = await blobToBase64(bB);
-            if (bC) images.C = await blobToBase64(bC);
-            return { ...event, _images: images };
-          })
-        );
-        return {
-          ...route,
-          urbanData: { ...route.urbanData, events: eventsWithImages }
-        };
-      })
-    );
-
-    const exportData = {
-      version: 2,
-      exportDate: new Date().toISOString(),
-      deviceId: S.vehicleId || 'unknown',
-      routes: routesWithImages,
-      trainingDataset,
-      urbanEvents
-    };
-
-    const json = JSON.stringify(exportData);
-    const sizeMB = (json.length / 1024 / 1024).toFixed(1);
-    toast('Tamaño: ' + sizeMB + ' MB — compartiendo...');
-
-    dlBlob(json, 'application/json',
-      'pavement_check_backup_' +
-      new Date().toISOString().slice(0,10) + '.json');
-
-  } catch(e) {
-    console.error('[Export]', e);
-    toast('⚠️ Error exportando: ' + e.message);
-  }
 }
 
 async function importFullDataset(file) {

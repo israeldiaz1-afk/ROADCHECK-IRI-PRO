@@ -782,23 +782,6 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
   if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();window._pwa=e;});
 </script>
-<div class="modal-bg hidden" id="downloadReadyModal">
-  <div class="modal">
-    <h3>📄 Archivo listo</h3>
-    <p class="sub" id="downloadReadyInfo"></p>
-    <div class="modal-btns" style="flex-direction:column;gap:8px">
-      <a id="downloadReadyLink" class="btn btn-pri"
-         style="text-decoration:none;text-align:center;display:block">
-        ⬇️ Descargar
-      </a>
-      <button class="btn btn-sec"
-              onclick="$('downloadReadyModal').classList.add('hidden')">
-        Cerrar
-      </button>
-    </div>
-  </div>
-</div>
-
 <div class="modal-bg hidden" id="exportSelectModal">
   <div class="modal">
     <h3>📤 Seleccionar rutas a exportar</h3>
