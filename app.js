@@ -4268,6 +4268,51 @@ async function runAutoTests() {
     detail: S.sensorOK ? 'Sensor activo' : 'Sensor no disponible'
   }));
 
+  await test('Giroscopio disponible', async () => {
+    if ('Gyroscope' in window) {
+      try {
+        const gyro = new Gyroscope({ frequency: 10 });
+        await new Promise((resolve, reject) => {
+          gyro.addEventListener('reading', () => {
+            gyro.stop();
+            resolve();
+          });
+          gyro.addEventListener('error', reject);
+          setTimeout(reject, 3000);
+          gyro.start();
+        });
+        return {
+          ok: true,
+          detail: `x=${S.gyro?.x?.toFixed(3)||'?'} ` +
+                  `y=${S.gyro?.y?.toFixed(3)||'?'} ` +
+                  `z=${S.gyro?.z?.toFixed(3)||'?'}`
+        };
+      } catch(e) {
+        return { ok: false, detail: e.message };
+      }
+    }
+    // Fallback: verificar rotationRate en devicemotion
+    return new Promise(resolve => {
+      const handler = e => {
+        window.removeEventListener('devicemotion', handler);
+        const r = e.rotationRate;
+        resolve({
+          ok: !!(r?.alpha !== null),
+          detail: r
+            ? `alpha=${r.alpha?.toFixed(1)} ` +
+              `beta=${r.beta?.toFixed(1)} ` +
+              `gamma=${r.gamma?.toFixed(1)}`
+            : 'rotationRate no disponible'
+        });
+      };
+      window.addEventListener('devicemotion', handler);
+      setTimeout(() => {
+        window.removeEventListener('devicemotion', handler);
+        resolve({ ok: false, detail: 'Timeout — sin datos de movimiento' });
+      }, 3000);
+    });
+  }, true); // warn si falla, no error
+
   // ═══════════════════════════════════════
   // RESUMEN FINAL
   // ═══════════════════════════════════════
