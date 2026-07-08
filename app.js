@@ -14,6 +14,9 @@ const S={
   calPhase:0,calStart:0,gravSamples:[],vibSamples:[],
   grav:null,gravMag:9.81,noiseLevel:.05,
   hpPrev:0,hpPrevIn:0,buf:[],bufMax:50,
+  gyro:{x:0,y:0,z:0},
+  gyroBuf:[],
+  gyroOffset:{x:0,y:0,z:0},
   chartMeas:null,chartDetail:null,
   chartZ:[],chartI:[],chartMax:80,lastChartUpd:0,lastIRIUpd:0,
   vehicleId:null,selRoutes:new Set(),showAvg:false,
@@ -449,6 +452,7 @@ function startSensor(){
   if(S.sensorOK)return;
   if(typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function'){$('btnIOS')?.classList.remove('hidden');return;}
   tryAccel();
+  tryGyro();
 }
 function tryAccel(){
   if('Accelerometer' in window){
@@ -461,8 +465,50 @@ function tryAccel(){
     }catch(e){motionFB();}
   }else{motionFB();}
 }
+function tryGyro() {
+  if ('Gyroscope' in window) {
+    try {
+      window._gyro = new Gyroscope({
+        frequency: C.freq,
+        referenceFrame: 'device'
+      });
+      window._gyro.addEventListener('reading', () => {
+        onGyro(
+          window._gyro.x || 0,
+          window._gyro.y || 0,
+          window._gyro.z || 0
+        );
+      });
+      window._gyro.addEventListener('error', () => {
+        console.log('[Gyro] Generic Sensor no disponible');
+      });
+      window._gyro.start();
+      console.log('[Gyro] Iniciado a ' + C.freq + 'Hz');
+    } catch(e) {
+      console.log('[Gyro] Error: ' + e.message);
+    }
+  }
+}
+
+function onGyro(gx, gy, gz) {
+  S.gyro.x = gx - S.gyroOffset.x;
+  S.gyro.y = gy - S.gyroOffset.y;
+  S.gyro.z = gz - S.gyroOffset.z;
+  if (S.calPhase === 1) {
+    S.gyroBuf.push({ x: gx, y: gy, z: gz });
+  }
+}
 function motionFB(){
-  window.addEventListener('devicemotion',e=>{const a=e.accelerationIncludingGravity;if(a)onRaw(a.x||0,a.y||0,a.z||0);},{passive:true});
+  window.addEventListener('devicemotion',e=>{
+    const a=e.accelerationIncludingGravity;
+    const r=e.rotationRate;
+    if(a)onRaw(a.x||0,a.y||0,a.z||0);
+    if(r)onGyro(
+      (r.alpha||0)*Math.PI/180,
+      (r.beta ||0)*Math.PI/180,
+      (r.gamma||0)*Math.PI/180
+    );
+  },{passive:true});
   S.sensorOK=true;setChip('cSEN','dSEN','lSEN','warn','#F59E0B','Sin calibrar');
 }
 function onRaw(x,y,z){
@@ -578,7 +624,15 @@ function extractFeaturesAndScore(triggerTs){
   const ayAvg=ays.reduce((a,b)=>a+b,0)/ays.length;
   const brakeCorrelation=Math.min(1,ayAvg/3); // 3 m/s² ~ frenada fuerte
 
-  const features={peakAmp,jerkMax,duration,bipolarity,freqEnergy,brakeCorrelation};
+  const gyroRoll  = Math.abs(S.gyro.x); // rad/s — roll lateral
+  const gyroPitch = Math.abs(S.gyro.y); // rad/s — pitch longitudinal
+
+  const features={
+    peakAmp,jerkMax,duration,bipolarity,
+    freqEnergy,brakeCorrelation,
+    gyroRoll,   // diferencia baches de frenazos
+    gyroPitch   // diferencia baches de badenes
+  };
 
   // Capturar ventana de vibración centrada en el pico — solo eje vertical calibrado
   const wfStart = Math.max(0, peakIdx - 15);
@@ -621,6 +675,9 @@ function scoreAndClassify(features,triggerTs,waveform){
   // Clasificar tipo PRIMERO — los badenes tienen fórmula de puntuación propia
   const type=classifyType(features);
 
+  // Frenazo puro: giroscopio confirma ausencia de rotación — es ruido, no se registra
+  if(type==='brake_noise')return;
+
   if(type==='speedbump'){
     // Badenes: firma físicamente suave (bajo jerk, sin bipolaridad, sin alta frecuencia)
     // — esas son sus características definitorias, no señal débil. La fórmula de impacto
@@ -653,10 +710,25 @@ function scoreAndClassify(features,triggerTs,waveform){
   registerEvent({triggerTs,speed,severity,score,type,features,waveform});
 }
 
-function classifyType(f){
-  if(f.duration>220&&f.freqEnergy<0.15)return 'speedbump'; // largo, baja frecuencia
-  if(f.duration<80&&f.bipolarity<0.2)return 'manhole';     // corto, sin rebote
-  if(f.bipolarity>0.28&&f.freqEnergy>0.15)return 'pothole';// firma bipolar con frecuencia
+function classifyType(f) {
+  // Frenazo: alta correlación de frenado Y bajo gyroRoll
+  if (f.brakeCorrelation > 0.5 && (f.gyroRoll||0) < 0.1)
+    return 'brake_noise';
+
+  // Badén: duración larga + pitch sostenido
+  if (f.duration > 220 && f.freqEnergy < 0.15 &&
+      (f.gyroPitch||0) > 0.05)
+    return 'speedbump';
+
+  // Tapa de registro: impacto corto + sin rotación
+  if (f.duration < 80 && f.bipolarity < 0.2 &&
+      (f.gyroRoll||0) < 0.08)
+    return 'manhole';
+
+  // Bache: firma bipolar + algo de rotación lateral
+  if (f.bipolarity > 0.28 && f.freqEnergy > 0.15)
+    return 'pothole';
+
   return 'unknown';
 }
 
@@ -760,6 +832,16 @@ function doCalSample(x,y,z){
       mx/=S.gravSamples.length;my/=S.gravSamples.length;mz/=S.gravSamples.length;
       const mag=Math.sqrt(mx*mx+my*my+mz*mz);if(mag<.5){endCal(false,'vector inválido');return;}
       S.grav={x:mx/mag,y:my/mag,z:mz/mag};S.gravMag=mag;S.calPhase=2;S.hpPrev=0;S.hpPrevIn=0;
+      if (S.gyroBuf.length > 30) {
+        const ng = S.gyroBuf.length;
+        S.gyroOffset.x = S.gyroBuf.reduce((s,v) => s+v.x, 0) / ng;
+        S.gyroOffset.y = S.gyroBuf.reduce((s,v) => s+v.y, 0) / ng;
+        S.gyroOffset.z = S.gyroBuf.reduce((s,v) => s+v.z, 0) / ng;
+        console.log('[Gyro] Offset calibrado: ' +
+          S.gyroOffset.x.toFixed(4) + ',' +
+          S.gyroOffset.y.toFixed(4) + ',' +
+          S.gyroOffset.z.toFixed(4));
+      }
       set('calMsg','Fase 2/2: detectando vibración de fondo…');set('calStep','FASE 2/2');
     }
   }else if(S.calPhase===2){
