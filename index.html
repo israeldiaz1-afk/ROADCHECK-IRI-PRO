@@ -617,6 +617,17 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
     <div class="gal-header">
       <span class="gal-counter" id="galCounter">1 / 0</span>
       <span class="gal-title" id="galTitle">Revisión de eventos</span>
+      <button id="btnToggleYOLO"
+        onclick="GAL.showYOLOBoxes=!GAL.showYOLOBoxes;
+                 drawGalleryCanvas();
+                 this.style.opacity=GAL.showYOLOBoxes?'1':'0.4'"
+        style="background:none;border:none;
+               color:var(--sky);font-size:.85rem;
+               cursor:pointer;padding:4px 8px;
+               opacity:0.4"
+        title="Mostrar/ocultar detecciones YOLO">
+        🎯 YOLO
+      </button>
       <button class="gal-close" onclick="closeGallery()">✕</button>
     </div>
     <div class="gal-image-wrap" id="galImageWrap">

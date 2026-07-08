@@ -2720,7 +2720,8 @@ const GAL={
   img:null,scale:1,minScale:1,maxScale:5,
   offsetX:0,offsetY:0,
   _lastTouchDist:null,_lastTouchX:null,_lastTouchY:null,
-  _isDragging:false,_lastTap:0
+  _isDragging:false,_lastTap:0,
+  showYOLOBoxes:false
 };
 function updateAccelViz(ax,ay,az){
   const dot=$('avDot'),zFill=$('avZfill'),zVal=$('avZval');
@@ -2732,7 +2733,7 @@ function updateAccelViz(ax,ay,az){
   const projX=ax-dot_ag*g.x;
   const projY=ay-dot_ag*g.y;
   const MAX_XY=4;
-  const pctX=Math.max(-44,Math.min(44,(projX/MAX_XY)*44));
+  const pctX=Math.max(-44,Math.min(44,(-projX/MAX_XY)*44));
   const pctY=Math.max(-44,Math.min(44,(-projY/MAX_XY)*44));
   dot.style.left=(50+pctX)+'%';
   dot.style.top=(50+pctY)+'%';
@@ -3450,7 +3451,7 @@ function drawGalleryCanvas(){
 
   const item=GAL.items[GAL.idx];
   const detections=item?.event?.yolo?.detections;
-  if(detections&&detections.length>0){
+  if(GAL.showYOLOBoxes && detections && detections.length>0){
     const colors={
       pothole:'#EF4444',alligator_crack:'#F97316',
       longitudinal_crack:'#F59E0B',transverse_crack:'#EAB308',
