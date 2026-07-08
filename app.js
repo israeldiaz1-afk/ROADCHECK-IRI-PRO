@@ -55,6 +55,17 @@ const S={
     active:false,gravBuf:[],gravBufMax:180,
     lastUpdate:0,updateCount:0,driftDeg:0,
     driftThresholdDeg:2.0,status:'idle',_stopStart:null
+  },
+  fusion: {
+    weights: {
+      vibration: 0.30,
+      yolo:      0.25,
+      gemini:    0.30,
+      video:     0.15
+    },
+    CONFIRM_THRESHOLD: 0.45,
+    MIN_LAYERS: 2,
+    history: []
   }
 };
 
@@ -732,6 +743,97 @@ function classifyType(f) {
   return 'unknown';
 }
 
+// ─ Fusión bayesiana de scores ──────────────────
+function loadFusionWeights() {
+  try {
+    const key = 'rc_fusion_weights_' + (S.vehicleId||'default');
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      Object.assign(S.fusion.weights, JSON.parse(stored));
+      console.log('[Fusión] Pesos cargados');
+    }
+  } catch(e) {}
+}
+
+function computeFusionScore(scores) {
+  const w = S.fusion.weights;
+  let weightedSum = 0, totalWeight = 0, layersWithData = 0;
+
+  if (scores.vibration !== null && scores.vibration !== undefined) {
+    weightedSum += w.vibration * scores.vibration;
+    totalWeight += w.vibration;
+    layersWithData++;
+  }
+  if (scores.yolo !== null && scores.yolo !== undefined) {
+    weightedSum += w.yolo * scores.yolo;
+    totalWeight += w.yolo;
+    layersWithData++;
+  }
+  if (scores.gemini !== null && scores.gemini !== undefined) {
+    weightedSum += w.gemini * scores.gemini;
+    totalWeight += w.gemini;
+    layersWithData++;
+  }
+
+  if (layersWithData < S.fusion.MIN_LAYERS) return null;
+  return totalWeight > 0 ? weightedSum / totalWeight : 0;
+}
+
+function evaluateFusion(event) {
+  const score = computeFusionScore(event._scores);
+  if (score === null) return;
+
+  event.fusionScore = score;
+  event.fusionConfirmed = score >= S.fusion.CONFIRM_THRESHOLD;
+
+  S.fusion.history.push({
+    eventId: event.id,
+    scores: { ...event._scores },
+    fusionScore: score,
+    confirmed: event.fusionConfirmed
+  });
+
+  console.log('[Fusión] score=' + score.toFixed(3) +
+    ' confirmed=' + event.fusionConfirmed);
+}
+
+function updateFusionWeights() {
+  const complete = S.fusion.history.filter(h =>
+    Object.values(h.scores).every(v => v !== null)
+  );
+  if (complete.length < 20) return;
+
+  const LEARNING_RATE = 0.01;
+  const w = S.fusion.weights;
+
+  complete.slice(-50).forEach(h => {
+    const target = h.confirmed ? 1 : 0;
+    const predicted = computeFusionScore(h.scores);
+    if (predicted === null) return;
+    const error = target - predicted;
+
+    if (h.scores.vibration !== null)
+      w.vibration += LEARNING_RATE * error * h.scores.vibration;
+    if (h.scores.yolo !== null)
+      w.yolo      += LEARNING_RATE * error * h.scores.yolo;
+    if (h.scores.gemini !== null)
+      w.gemini    += LEARNING_RATE * error * h.scores.gemini;
+
+    // Normalizar y mantener mínimos
+    const total = w.vibration + w.yolo + w.gemini + w.video;
+    Object.keys(w).forEach(k =>
+      w[k] = Math.max(0.05, w[k] / total)
+    );
+  });
+
+  try {
+    const key = 'rc_fusion_weights_' + (S.vehicleId||'default');
+    localStorage.setItem(key, JSON.stringify(w));
+    console.log('[Fusión] Pesos actualizados: ' +
+      Object.entries(w).map(([k,v]) => k+'='+v.toFixed(3)).join(' '));
+  } catch(e) {}
+}
+
 function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   if(!S.lastPos)return;
   const pos=getBestPosition()||S.lastPos;
@@ -745,6 +847,17 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   };
   S.noiseFilter.eventMask=true;S.noiseFilter.eventMaskTs=Date.now();
   S.urbanEvents.push(event);
+
+  // Inicializar scores — null = capa sin datos todavía
+  event._scores = {
+    vibration: Math.min(1, event.score / 100), // normalizar 0-100 a 0-1
+    yolo:      null,
+    gemini:    null
+  };
+
+  // Evaluación inicial con solo vibración
+  evaluateFusion(event);
+
   S._lastEventTs=triggerTs;
   S._recentUrbanEvent=true;setTimeout(()=>{S._recentUrbanEvent=false;},500);
   registerChartMark(severity==='grave'?'#EF4444':'#F59E0B','urban');
@@ -772,33 +885,44 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   if(frames.length>0) showEventThumbnail(event);
 
   // Invocar YOLO y Gemini en paralelo con el frame nominal (B) o el primero disponible
-  if (event._frameBlob) {
-    if (YOLO_STATE.ready) {
-      runYOLO(event._frameBlob).then(detections => {
-        event.yolo = { detections: detections || [] };
-        if (detections && detections.length > 0) {
-          const best = detections.reduce((a,b) => a.conf>b.conf?a:b);
-          event.yolo.topClass = best.className;
-          event.yolo.topConf = best.conf;
-          event.yolo.confirmed = true;
-        } else {
-          event.yolo.confirmed = false;
-        }
-        queueUI('gallery_refresh', () => {
-          if (GAL.items.some(i => i.event.id === event.id)) {
-            renderGalleryItem(GAL.idx);
-          }
-        });
-      });
-    }
+  // — ambas integradas con la fusión bayesiana de scores
 
-    analyzeEventWithGemini(event, event._frameBlob, null).then(result => {
+  // Cuando YOLO devuelve resultado:
+  if (event._frameBlob && YOLO_STATE.ready) {
+    runYOLO(event._frameBlob).then(detections => {
+      event.yolo = { detections: detections || [] };
+      if (detections && detections.length > 0) {
+        const best = detections.reduce((a,b) => a.conf>b.conf?a:b);
+        event._scores.yolo = best.className === 'no_damage'
+          ? Math.max(0, 1 - best.conf)
+          : best.conf;
+        event.yolo.topClass = best.className;
+        event.yolo.topConf  = best.conf;
+        event.yolo.confirmed = true;
+      } else {
+        event._scores.yolo = 0.2;
+        event.yolo.confirmed = false;
+      }
+      evaluateFusion(event);
+      // Refrescar galería si está abierta
+      queueUI('gallery_refresh', () => {
+        if (GAL.items.some(i => i.event.id === event.id)) {
+          renderGalleryItem(GAL.idx);
+        }
+      });
+    }).catch(() => { event._scores.yolo = 0.2; });
+  }
+
+  // Cuando Gemini devuelve resultado:
+  if (event._frameBlob) {
+    analyzeEventWithGemini(event, event._frameBlob).then(result => {
       if (!result) return;
       event.gemini = result;
       event.geminiConfirm = !result.discard;
-      if (result.discard) {
-        event.geminiSuggestsDiscard = true;
-      }
+      event._scores.gemini = result.discard
+        ? Math.max(0, 1 - (result.confidence || 0.5))
+        : (result.confidence || 0.5);
+      evaluateFusion(event);
       queueUI('gallery_refresh', () => {
         if (GAL.items.some(i => i.event.id === event.id)) {
           renderGalleryItem(GAL.idx);
@@ -1119,6 +1243,7 @@ async function startMeasurement(){
   S.active=true;S.paused=false;S.dist=0;S._sessionStart=Date.now();S._recentUrbanEvent=false;
   S.adaptiveCal={active:false,gravBuf:[],gravBufMax:180,lastUpdate:0,updateCount:0,driftDeg:0,driftThresholdDeg:2.0,status:'idle',_stopStart:null};
   S._manualRecalRequest=false;
+  loadFusionWeights();
   S.buf=[];S.chartZ=[];S.chartI=[];S.hpPrev=0;S.hpPrevIn=0;
   EKG.buf.marks=[];EKG.buf.totalSamples=0;
   GAL.items=[];GAL.idx=0;GAL.activeFrameIdx=1;VIDEO_BUF.frames=[];
@@ -1221,6 +1346,8 @@ function stopMeasurement(){
     vehicleId:iriData?.vehicleId||null,
     iriData,urbanData,comfortData
   };
+  updateFusionWeights();
+  loadFusionWeights();
   showValidateModal();
 }
 function buildUrbanDataFinal() {
@@ -3489,7 +3616,16 @@ function renderGalleryItem(idx){
       ?`<span class="gal-badge" style="background:rgba(14,165,233,.15);color:#0EA5E9">🎯 YOLO: ${event.yolo.topClass} ${(event.yolo.topConf*100).toFixed(0)}%</span>`
       :event.yolo?.detections
       ?'<span class="gal-badge">🎯 YOLO: sin detección</span>'
-      :''
+      :'',
+    event.fusionScore !== undefined
+      ? `<span class="gal-badge" style="background:rgba(${
+          event.fusionConfirmed
+            ? '16,185,129' : '239,68,68'},.15);color:${
+          event.fusionConfirmed ? '#10B981' : '#EF4444'}">
+          ⚖️ Fusión: ${(event.fusionScore*100).toFixed(0)}%
+          ${event.fusionConfirmed ? '✓' : '✗'}
+        </span>`
+      : ''
   ].join('');
   $('galDesc').textContent=event.gemini?.description||'';
   $('galCoords').textContent=event.lat?`📍 ${event.lat.toFixed(5)}, ${event.lon.toFixed(5)}`:'';
