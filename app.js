@@ -2077,6 +2077,13 @@ function exportValidationDataset(){
 }
 
 async function importFullDataset(file) {
+  if (!file) {
+    toast('⚠️ No se seleccionó ningún archivo');
+    return;
+  }
+  console.log('[Import] Archivo:', file.name,
+    'Tipo:', file.type, 'Tamaño:', file.size);
+  toast('Leyendo: ' + file.name);
   try {
     toast('Importando datos...');
     const text = await file.text();

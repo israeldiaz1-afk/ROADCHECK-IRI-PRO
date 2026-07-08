@@ -546,7 +546,7 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
                style="flex:1;font-size:.72rem;
                       text-align:center;cursor:pointer">
           📥 Importar
-          <input type="file" accept=".json"
+          <input type="file" accept=".json,application/json,application/octet-stream"
                  style="display:none"
                  onchange="importFullDataset(this.files[0])">
         </label>
