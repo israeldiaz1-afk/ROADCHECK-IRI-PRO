@@ -50,6 +50,7 @@ const S={
   _sessionStart:0,
   _recentUrbanEvent:false,
   _manualRecalRequest:false,
+  wakeLock:null,
   autoRecalEnabled:true,
   adaptiveCal:{
     active:false,gravBuf:[],gravBufMax:180,
@@ -1236,6 +1237,38 @@ function initMeasMap(){
   }catch(e){console.error('[MAP] meas error:',e);}
 }
 
+// ─ Wake Lock ──────────────────────────────────
+async function requestWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      S.wakeLock = await navigator.wakeLock.request('screen');
+      console.log('[WakeLock] Pantalla bloqueada activa');
+      S.wakeLock.addEventListener('release', () => {
+        console.log('[WakeLock] Liberada');
+      });
+    } catch(e) {
+      console.log('[WakeLock] No disponible: ' + e.message);
+    }
+  }
+}
+
+async function releaseWakeLock() {
+  if (S.wakeLock) {
+    try {
+      await S.wakeLock.release();
+      S.wakeLock = null;
+    } catch(e) {}
+  }
+}
+
+// Reactivar si la app vuelve al primer plano
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' &&
+      S.active && !S.wakeLock) {
+    requestWakeLock();
+  }
+});
+
 // ─ Measurement ────────────────────────────────
 async function startMeasurement(){
   if(!S.calibrated){
@@ -1302,10 +1335,12 @@ async function startMeasurement(){
   } catch(e) {
     toast('❌ Excepción: '+e.message);
   }
+  requestWakeLock();
 }
 function pauseMeasurement(){S.paused=true;$('btnPause').classList.add('hidden');$('btnResume').classList.remove('hidden');toast('⏸ Pausado');}
 function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');toast('▶ Reanudado');}
 function stopMeasurement(){
+  releaseWakeLock();
   $('cameraSelectorModal')?.classList.add('hidden');
   S.active=false;
   S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
