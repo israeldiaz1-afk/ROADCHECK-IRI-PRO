@@ -316,7 +316,10 @@ function saveRoute(r){
       (key,val)=>{
         if(key==='_frameBlobs'||
            key==='_frameBlob'||
-           key==='_clipBlobs') return undefined;
+           key==='_clipBlobs'||
+           key==='_images'||
+           key==='imgB64'||
+           key==='imageSrc') return undefined;
         return val;
       }
     ));
@@ -1515,7 +1518,8 @@ function mergeEventsIntoStorage(newEvents){
       match.confirmed=match.confirmCount>=2;
       match.lastSeen=ev.ts;
     }else{
-      const {_frameBlobs,_frameBlob,_clipBlobs,...evClean}=ev;
+      const {_frameBlobs,_frameBlob,_clipBlobs,
+             imageSrc,imgB64,...evClean}=ev;
       stored.push({...evClean,lastSeen:ev.ts});
     }
   });
@@ -3115,7 +3119,6 @@ async function analyzeEventWithGemini(event,imageBlob){
     reader.onload=()=>resolve(reader.result.split(',')[1]);
     reader.readAsDataURL(imageBlob);
   });
-  event.imageSrc='data:image/jpeg;base64,'+base64;
   const payload={
     image:base64,
     features:{
