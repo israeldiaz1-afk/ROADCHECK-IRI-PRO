@@ -1024,6 +1024,9 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
             if (GAL.items.some(i=>i.event.id===event.id))
               renderGalleryItem(GAL.idx);
           });
+        }).catch(() => {
+          event._scores.yolo = 0.2;
+          evaluateFusion(event);
         });
       }
 
