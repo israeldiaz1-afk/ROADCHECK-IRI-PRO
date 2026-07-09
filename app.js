@@ -991,17 +991,60 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   event._frameBlob=frames[1]?.blob||frames[0]?.blob;
 
   // Procesado de calidad en background: seleccionar
-  // el frame más nítido y aplicar sharpen
+  // el frame más nítido, aplicar sharpen, y solo
+  // entonces invocar YOLO y Gemini sobre ese frame
   if (frames.length > 0) {
     selectSharpestFrame(frames).then(async best => {
       if (!best) return;
+
+      // Aplicar sharpen al mejor frame
       const sharpened = await sharpenBlob(best.blob);
-      // El frame más nítido y mejorado va a YOLO y Gemini
       event._frameBlob = sharpened;
-      // Guardar en IndexedDB marcado como 'best'
-      await saveImageBlob(event.id + '_best', sharpened);
+      await saveImageBlob(event.id+'_best', sharpened);
       console.log('[Quality] Mejor frame: ' +
-        best.label + ' → sharpenado');
+        best.label + ' sharpenado');
+
+      // YOLO sobre el frame mejorado
+      if (YOLO_STATE.ready) {
+        runYOLO(sharpened).then(detections => {
+          event.yolo = { detections: detections||[] };
+          if (detections?.length > 0) {
+            const best = detections
+              .reduce((a,b) => a.conf>b.conf?a:b);
+            event.yolo.topClass = best.className;
+            event.yolo.topConf = best.conf;
+            event.yolo.confirmed = true;
+            event._scores.yolo = best.conf;
+          } else {
+            event.yolo.confirmed = false;
+            event._scores.yolo = 0.2;
+          }
+          evaluateFusion(event);
+          queueUI('gallery_refresh', () => {
+            if (GAL.items.some(i=>i.event.id===event.id))
+              renderGalleryItem(GAL.idx);
+          });
+        });
+      }
+
+      // Gemini sobre el frame mejorado
+      analyzeEventWithGemini(event, sharpened)
+        .then(result => {
+          if (!result) return;
+          event.gemini = result;
+          event.geminiConfirm = !result.discard;
+          if (result.discard)
+            event.geminiSuggestsDiscard = true;
+          event._scores.gemini = result.discard
+            ? Math.max(0, 1-(result.confidence||0.5))
+            : (result.confidence||0.5);
+          evaluateFusion(event);
+          queueUI('gallery_refresh', () => {
+            if (GAL.items.some(i=>i.event.id===event.id))
+              renderGalleryItem(GAL.idx);
+          });
+        });
+
     });
   }
 
@@ -1014,53 +1057,6 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   // Añadir SIEMPRE a galería independientemente de frames
   addToGallery(event);
   if(frames.length>0) showEventThumbnail(event);
-
-  // Invocar YOLO y Gemini en paralelo con el frame nominal (B) o el primero disponible
-  // — ambas integradas con la fusión bayesiana de scores
-
-  // Cuando YOLO devuelve resultado:
-  if (event._frameBlob && YOLO_STATE.ready) {
-    runYOLO(event._frameBlob).then(detections => {
-      event.yolo = { detections: detections || [] };
-      if (detections && detections.length > 0) {
-        const best = detections.reduce((a,b) => a.conf>b.conf?a:b);
-        event._scores.yolo = best.className === 'no_damage'
-          ? Math.max(0, 1 - best.conf)
-          : best.conf;
-        event.yolo.topClass = best.className;
-        event.yolo.topConf  = best.conf;
-        event.yolo.confirmed = true;
-      } else {
-        event._scores.yolo = 0.2;
-        event.yolo.confirmed = false;
-      }
-      evaluateFusion(event);
-      // Refrescar galería si está abierta
-      queueUI('gallery_refresh', () => {
-        if (GAL.items.some(i => i.event.id === event.id)) {
-          renderGalleryItem(GAL.idx);
-        }
-      });
-    }).catch(() => { event._scores.yolo = 0.2; });
-  }
-
-  // Cuando Gemini devuelve resultado:
-  if (event._frameBlob) {
-    analyzeEventWithGemini(event, event._frameBlob).then(result => {
-      if (!result) return;
-      event.gemini = result;
-      event.geminiConfirm = !result.discard;
-      event._scores.gemini = result.discard
-        ? Math.max(0, 1 - (result.confidence || 0.5))
-        : (result.confidence || 0.5);
-      evaluateFusion(event);
-      queueUI('gallery_refresh', () => {
-        if (GAL.items.some(i => i.event.id === event.id)) {
-          renderGalleryItem(GAL.idx);
-        }
-      });
-    });
-  }
 }
 function showIOSPerm(){$('sensorPermModal')?.classList.remove('hidden');}
 function grantIOS(){$('sensorPermModal')?.classList.add('hidden');DeviceMotionEvent.requestPermission().then(s=>{if(s==='granted'){S.sensorOK=true;$('btnIOS')?.classList.add('hidden');tryAccel();startCal();toast('Permiso concedido');}else toast('Permiso denegado');});}
