@@ -3697,6 +3697,7 @@ function renderGalleryItem(idx){
   }
 
   ensureFrames(event).then(() => {
+    if (GAL.items[GAL.idx]?.event !== event) return;
     const frames = event._frameBlobs || [];
     const noFrames = frames.length === 0;
     const canvas=$('galCanvas'),
