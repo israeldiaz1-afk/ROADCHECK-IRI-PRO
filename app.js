@@ -2242,7 +2242,7 @@ if (validatedMapEl) {
   dlBlob(html,'text/html','informe_urbano_'+statusTag+'_'+(r.name||'ruta').replace(/\s/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.html');
   }catch(e){console.error('[expHTMLUrban] ERROR:',e);toast('⚠️ Error generando informe: '+e.message);}
 }
-function expHTML(id){
+async function expHTML(id){
   const r=allRoutes().find(r=>r.id===id);if(!r)return;
   const modes=r.modesUsed||['iri'];
   if(getReportMode(r)==='urban'){expHTMLUrban(r);return;}
@@ -2256,7 +2256,15 @@ function expHTML(id){
   const segsJ=JSON.stringify((r.segs||[]).map(s=>({pts:(s.pts||[]).map(p=>({lat:p.lat,lon:p.lon})),iriC:+(s.iriC||0).toFixed(3),iriM:+(s.iriM||0).toFixed(3),dist:+(s.dist||0).toFixed(1)})));
   // Extra sections for urban and comfort modes
   const _evs=r.urbanData?.events||[];
-  const urbanGallery=_evs.filter(e=>e.imageSrc).map(e=>`<div class="gal-item"><img src="${e.imageSrc}" alt="${escH(e.type||'')} ${escH(e.severity||'')}"><div class="gal-info"><span>${e.type||'?'} · ${e.severity||'?'}</span><span>Conf. ${e.gemini?.confidence!=null?(e.gemini.confidence*100).toFixed(0)+'%':'-'}</span><span>Score: ${(e.score||0).toFixed(0)}</span></div></div>`).join('');
+  const _eventsWithImgs=await Promise.all(_evs.map(async e=>{
+    const blob=await getImageBlob(e.id+'_B')||
+               await getImageBlob(e.id+'_A')||
+               await getImageBlob(e.id+'_C');
+    if(!blob) return{...e,imgB64:null};
+    const imgB64=await blobToBase64(blob);
+    return{...e,imgB64};
+  }));
+  const urbanGallery=_eventsWithImgs.filter(e=>e.imgB64).map(e=>`<div class="gal-item"><img src="data:image/jpeg;base64,${e.imgB64}" alt="${escH(e.type||'')} ${escH(e.severity||'')}"><div class="gal-info"><span>${e.type||'?'} · ${e.severity||'?'}</span><span>Conf. ${e.gemini?.confidence!=null?(e.gemini.confidence*100).toFixed(0)+'%':'-'}</span><span>Score: ${(e.score||0).toFixed(0)}</span></div></div>`).join('');
   const urbanSection=modes.includes('urban')&&_evs.length?`<div class="dv"></div><h2>Eventos Urbanos (${_evs.length})</h2><table><thead><tr><th>#</th><th>Tipo</th><th>Severidad</th><th>Score</th><th>Vel.(km/h)</th><th>Confirmado</th><th>Tipo (Gemini)</th><th>Sev. Gemini</th><th>Conf.</th><th>Descripción IA</th></tr></thead><tbody>${_evs.map((e,i)=>`<tr><td>${i+1}</td><td>${escH(e.type||'')}</td><td style="color:${e.severity==='grave'?'#EF4444':e.severity==='moderado'?'#F59E0B':'#10B981'}">${e.severity||''}</td><td>${(e.score||0).toFixed(1)}</td><td>${(e.speed||0).toFixed(1)}</td><td>${e.confirmed?'Sí':'No'}</td><td>${escH(e.gemini?.type||'')}</td><td>${escH(e.gemini?.severity||'')}</td><td>${e.gemini?.confidence!=null?(e.gemini.confidence*100).toFixed(0)+'%':''}</td><td>${escH(e.gemini?.description||'')}</td></tr>`).join('')}</tbody></table>${urbanGallery?`<div class="dv"></div><h2>Galería de Eventos</h2><div class="gallery">${urbanGallery}</div>`:''}`:'';
   const cd=r.comfortData;
   const comfortSection=modes.includes('comfort')&&cd?`<div class="dv"></div><h2>Confort de Marcha (ISO 2631-1)</h2><div class="cards"><div class="card"><div class="v">${(cd.avgAv||0).toFixed(3)}</div><div class="l">a_v medio (m/s²)</div></div><div class="card"><div class="v" style="font-size:.75rem;color:${classifyComfort(cd.avgAv||0).color}">${classifyComfort(cd.avgAv||0).label}</div><div class="l">Nivel</div></div><div class="card"><div class="v">${((cd.vdvSession?.z)||0).toFixed(3)}</div><div class="l">VDV_Z (m/s^1.75)</div></div></div><p style="font-size:.56rem;color:#5A7E9C;margin-bottom:8px">${escH(COMFORT_DISCLAIMER)}</p>`:'';
