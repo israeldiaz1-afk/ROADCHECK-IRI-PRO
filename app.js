@@ -3752,35 +3752,90 @@ function renderGalleryItem(idx){
   $('galPrev').disabled=idx===0;
   $('galNext').disabled=idx===GAL.items.length-1;
   GAL.scale=1;GAL.offsetX=0;GAL.offsetY=0;
-  GAL.activeFrameIdx = 1;
+  GAL.activeFrameIdx=1;
 
-  async function ensureFrames(event) {
-    if (event._frameBlobs?.length > 0) return;
-    const [bA,bB,bC] = await getImageBlobs([
-      event.id+'_A', event.id+'_B', event.id+'_C'
+  // Renderizar badges e info que no dependen
+  // de los frames — inmediatamente
+  const typeIcons={pothole:'🕳️',manhole:'⭕',
+    speedbump:'⛰️',crack:'〰️',degraded:'🔴',
+    patch:'🔧',unknown:'❓'};
+  const sevColors={leve:'#F59E0B',
+    moderado:'#F97316',grave:'#EF4444'};
+  const icon=typeIcons[event.type]||'❓';
+  const sevColor=sevColors[event.severity]||'#3A5F7A';
+  $('galDesc').textContent=event.gemini?.description||'';
+  $('galCoords').textContent=event.lat
+    ?`📍 ${event.lat.toFixed(5)}, ${event.lon.toFixed(5)}`:'';
+  const validated=!!event.humanLabel;
+  $('galBtnOk').disabled=validated;
+  $('galBtnEdit').disabled=validated;
+  $('galBtnNo').disabled=validated;
+  const kbdHint=$('galKbdHint');
+  if(kbdHint)kbdHint.style.display=
+    isTouchDevice()?'none':'block';
+
+  async function ensureFrames(ev){
+    if(ev._frameBlobs?.length>0)return;
+    const[bA,bB,bC]=await getImageBlobs([
+      ev.id+'_A',ev.id+'_B',ev.id+'_C'
     ]);
-    const frameBlobs = [];
-    if(bA) frameBlobs.push({blob:bA,label:'A',diff:0});
-    if(bB) frameBlobs.push({blob:bB,label:'B',diff:0});
-    if(bC) frameBlobs.push({blob:bC,label:'C',diff:0});
-    event._frameBlobs = frameBlobs;
+    const fb=[];
+    if(bA)fb.push({blob:bA,label:'A',diff:0});
+    if(bB)fb.push({blob:bB,label:'B',diff:0});
+    if(bC)fb.push({blob:bC,label:'C',diff:0});
+    ev._frameBlobs=fb;
   }
 
-  ensureFrames(event).then(() => {
-    if (GAL.items[GAL.idx]?.event !== event) return;
-    const frames = event._frameBlobs || [];
-    const noFrames = frames.length === 0;
+  ensureFrames(event).then(()=>{
+    if(GAL.items[GAL.idx]?.event!==event)return;
+    const frames=event._frameBlobs||[];
+    const noFrames=frames.length===0;
     const canvas=$('galCanvas'),
           wrap=$('galImageWrap'),
           noImg=$('galNoImage'),
           thumbs=$('galThumbs'),
           badge=$('galFrameBadge');
 
+    // Badges — aquí frames está en scope
+    $('galBadges').innerHTML=[
+      `<span class="gal-badge">${icon} ${event.type||'desconocido'}</span>`,
+      `<span class="gal-badge" style="color:${sevColor}">${event.severity||'—'}</span>`,
+      `<span class="gal-badge">Score: ${event.score?.toFixed(0)||'—'}</span>`,
+      `<span class="gal-badge">${event.speed?.toFixed(0)||'—'} km/h</span>`,
+      `<span class="gal-badge">${frames.length} frame${frames.length!==1?'s':''}</span>`,
+      event.humanLabel
+        ?`<span class="gal-badge ${event.humanLabel}">${
+            event.humanLabel==='confirmed'?'✅':
+            event.humanLabel==='discarded'?'❌':'✏️'
+          } Validado</span>`
+        :'<span class="gal-badge">Sin validar</span>',
+      event.noiseCandidate
+        ?'<span class="gal-badge" style="background:rgba(234,179,8,.2);color:#EAB308">🟡 Candidato a ruido</span>'
+        :'',
+      event.geminiSuggestsDiscard
+        ?'<span class="gal-badge" style="background:rgba(239,68,68,.15);color:#EF4444">🤖 IA sugiere falso positivo</span>'
+        :'',
+      event.yolo?.confirmed
+        ?`<span class="gal-badge" style="background:rgba(14,165,233,.15);color:#0EA5E9">🎯 YOLO: ${event.yolo.topClass} ${(event.yolo.topConf*100).toFixed(0)}%</span>`
+        :event.yolo?.detections
+        ?'<span class="gal-badge">🎯 YOLO: sin detección</span>'
+        :'',
+      event.fusionScore!==undefined
+        ?`<span class="gal-badge" style="background:rgba(${
+            event.fusionConfirmed?'16,185,129':'239,68,68'},.15);color:${
+            event.fusionConfirmed?'#10B981':'#EF4444'}">
+            ⚖️ Fusión: ${(event.fusionScore*100).toFixed(0)}%
+            ${event.fusionConfirmed?'✓':'✗'}
+          </span>`
+        :''
+    ].join('');
+
+    // Miniaturas
     if(thumbs){
       if(noFrames){
         thumbs.innerHTML='';
         thumbs.style.display='none';
-      } else {
+      }else{
         thumbs.style.display='flex';
         thumbs.innerHTML=frames.map((f,fi)=>{
           const url=URL.createObjectURL(f.blob);
@@ -3798,11 +3853,12 @@ function renderGalleryItem(idx){
       }
     }
 
+    // Canvas principal
     if(noFrames){
       canvas.style.display='none';
       noImg.classList.remove('hidden');
       if(badge)badge.textContent='';
-    } else {
+    }else{
       noImg.classList.add('hidden');
       canvas.style.display='block';
       loadFrameToCanvas(
@@ -3811,46 +3867,6 @@ function renderGalleryItem(idx){
       );
     }
   });
-  const typeIcons={pothole:'🕳️',manhole:'⭕',speedbump:'⛰️',crack:'〰️',degraded:'🔴',patch:'🔧',unknown:'❓'};
-  const sevColors={leve:'#F59E0B',moderado:'#F97316',grave:'#EF4444'};
-  const icon=typeIcons[event.type]||'❓';
-  const sevColor=sevColors[event.severity]||'#3A5F7A';
-  $('galBadges').innerHTML=[
-    `<span class="gal-badge">${icon} ${event.type||'desconocido'}</span>`,
-    `<span class="gal-badge" style="color:${sevColor}">${event.severity||'—'}</span>`,
-    `<span class="gal-badge">Score: ${event.score?.toFixed(0)||'—'}</span>`,
-    `<span class="gal-badge">${event.speed?.toFixed(0)||'—'} km/h</span>`,
-    `<span class="gal-badge">${frames.length} frame${frames.length!==1?'s':''}</span>`,
-    event.humanLabel
-      ?`<span class="gal-badge ${event.humanLabel}">${event.humanLabel==='confirmed'?'✅':event.humanLabel==='discarded'?'❌':'✏️'} Validado</span>`
-      :'<span class="gal-badge">Sin validar</span>',
-    event.noiseCandidate
-      ?'<span class="gal-badge" style="background:rgba(234,179,8,.2);color:#EAB308">🟡 Candidato a ruido</span>'
-      :'',
-    event.geminiSuggestsDiscard
-      ?'<span class="gal-badge" style="background:rgba(239,68,68,.15);color:#EF4444">🤖 IA sugiere falso positivo</span>'
-      :'',
-    event.yolo?.confirmed
-      ?`<span class="gal-badge" style="background:rgba(14,165,233,.15);color:#0EA5E9">🎯 YOLO: ${event.yolo.topClass} ${(event.yolo.topConf*100).toFixed(0)}%</span>`
-      :event.yolo?.detections
-      ?'<span class="gal-badge">🎯 YOLO: sin detección</span>'
-      :'',
-    event.fusionScore !== undefined
-      ? `<span class="gal-badge" style="background:rgba(${
-          event.fusionConfirmed
-            ? '16,185,129' : '239,68,68'},.15);color:${
-          event.fusionConfirmed ? '#10B981' : '#EF4444'}">
-          ⚖️ Fusión: ${(event.fusionScore*100).toFixed(0)}%
-          ${event.fusionConfirmed ? '✓' : '✗'}
-        </span>`
-      : ''
-  ].join('');
-  $('galDesc').textContent=event.gemini?.description||'';
-  $('galCoords').textContent=event.lat?`📍 ${event.lat.toFixed(5)}, ${event.lon.toFixed(5)}`:'';
-  const validated=!!event.humanLabel;
-  $('galBtnOk').disabled=validated;$('galBtnEdit').disabled=validated;$('galBtnNo').disabled=validated;
-  const kbdHint=$('galKbdHint');
-  if(kbdHint){kbdHint.style.display=isTouchDevice()?'none':'block';}
 }
 function selectGalleryFrame(fi){
   const item=GAL.items[GAL.idx];if(!item)return;
