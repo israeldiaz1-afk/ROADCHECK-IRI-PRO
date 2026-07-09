@@ -511,6 +511,7 @@ function onGyro(gx, gy, gz) {
   if (S.calPhase === 1) {
     S.gyroBuf.push({ x: gx, y: gy, z: gz });
   }
+  updateGyroViz();
 }
 function motionFB(){
   window.addEventListener('devicemotion',e=>{
@@ -3029,7 +3030,6 @@ function updateAccelViz(ax,ay,az){
     zFill.className='av-zfill'+(Math.abs(vertRaw)>3?' bad':Math.abs(vertRaw)>1.5?' warn':'');
   }
   if(zVal)zVal.textContent=vertRaw.toFixed(2);
-  updateGyroViz();
 }
 function drawArrow(ctx,x1,y1,x2,y2,color,magnitude){
   const angle=Math.atan2(y2-y1,x2-x1);
