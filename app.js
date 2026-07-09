@@ -3763,9 +3763,6 @@ function renderGalleryItem(idx){
     moderado:'#F97316',grave:'#EF4444'};
   const icon=typeIcons[event.type]||'❓';
   const sevColor=sevColors[event.severity]||'#3A5F7A';
-  $('galDesc').textContent=event.gemini?.description||'';
-  $('galCoords').textContent=event.lat
-    ?`📍 ${event.lat.toFixed(5)}, ${event.lon.toFixed(5)}`:'';
   const validated=!!event.humanLabel;
   $('galBtnOk').disabled=validated;
   $('galBtnEdit').disabled=validated;
@@ -3796,39 +3793,76 @@ function renderGalleryItem(idx){
           thumbs=$('galThumbs'),
           badge=$('galFrameBadge');
 
-    // Badges — aquí frames está en scope
-    $('galBadges').innerHTML=[
-      `<span class="gal-badge">${icon} ${event.type||'desconocido'}</span>`,
-      `<span class="gal-badge" style="color:${sevColor}">${event.severity||'—'}</span>`,
-      `<span class="gal-badge">Score: ${event.score?.toFixed(0)||'—'}</span>`,
-      `<span class="gal-badge">${event.speed?.toFixed(0)||'—'} km/h</span>`,
-      `<span class="gal-badge">${frames.length} frame${frames.length!==1?'s':''}</span>`,
-      event.humanLabel
-        ?`<span class="gal-badge ${event.humanLabel}">${
-            event.humanLabel==='confirmed'?'✅':
-            event.humanLabel==='discarded'?'❌':'✏️'
-          } Validado</span>`
-        :'<span class="gal-badge">Sin validar</span>',
-      event.noiseCandidate
-        ?'<span class="gal-badge" style="background:rgba(234,179,8,.2);color:#EAB308">🟡 Candidato a ruido</span>'
-        :'',
-      event.geminiSuggestsDiscard
-        ?'<span class="gal-badge" style="background:rgba(239,68,68,.15);color:#EF4444">🤖 IA sugiere falso positivo</span>'
-        :'',
-      event.yolo?.confirmed
-        ?`<span class="gal-badge" style="background:rgba(14,165,233,.15);color:#0EA5E9">🎯 YOLO: ${event.yolo.topClass} ${(event.yolo.topConf*100).toFixed(0)}%</span>`
-        :event.yolo?.detections
-        ?'<span class="gal-badge">🎯 YOLO: sin detección</span>'
-        :'',
-      event.fusionScore!==undefined
-        ?`<span class="gal-badge" style="background:rgba(${
-            event.fusionConfirmed?'16,185,129':'239,68,68'},.15);color:${
-            event.fusionConfirmed?'#10B981':'#EF4444'}">
-            ⚖️ Fusión: ${(event.fusionScore*100).toFixed(0)}%
-            ${event.fusionConfirmed?'✓':'✗'}
-          </span>`
-        :''
-    ].join('');
+    // Tabla estructurada — aquí frames está en scope
+    const fusionColor = event.fusionConfirmed
+      ? '#10B981' : '#EF4444';
+
+    $('galInfo').innerHTML = `
+    <table style="width:100%;border-collapse:collapse;
+                  font-size:.72rem;font-family:var(--mono)">
+      <tr style="border-bottom:1px solid rgba(14,165,233,.1)">
+        <td style="color:var(--dim);padding:4px 6px">Tipo</td>
+        <td style="padding:4px 6px;font-weight:700">
+          ${typeIcons[event.type]||'❓'} ${event.type||'—'}
+        </td>
+        <td style="color:var(--dim);padding:4px 6px">Severidad</td>
+        <td style="padding:4px 6px;color:${sevColor};font-weight:700">
+          ${event.severity||'—'}
+        </td>
+      </tr>
+      <tr style="border-bottom:1px solid rgba(14,165,233,.1)">
+        <td style="color:var(--dim);padding:4px 6px">Score</td>
+        <td style="padding:4px 6px">${event.score?.toFixed(0)||'—'}/100</td>
+        <td style="color:var(--dim);padding:4px 6px">Velocidad</td>
+        <td style="padding:4px 6px">${event.speed?.toFixed(0)||'—'} km/h</td>
+      </tr>
+      <tr style="border-bottom:1px solid rgba(14,165,233,.1)">
+        <td style="color:var(--dim);padding:4px 6px">YOLO</td>
+        <td style="padding:4px 6px;color:#0EA5E9">
+          ${event.yolo?.confirmed
+            ? `🎯 ${event.yolo.topClass} ${(event.yolo.topConf*100).toFixed(0)}%`
+            : event.yolo ? 'Sin detección' : '—'}
+        </td>
+        <td style="color:var(--dim);padding:4px 6px">Fusión</td>
+        <td style="padding:4px 6px;color:${event.fusionScore!==undefined?fusionColor:'var(--dim)'}">
+          ${event.fusionScore!==undefined
+            ? `⚖️ ${(event.fusionScore*100).toFixed(0)}% ${event.fusionConfirmed?'✓':'✗'}`
+            : '—'}
+        </td>
+      </tr>
+      <tr style="border-bottom:1px solid rgba(14,165,233,.1)">
+        <td style="color:var(--dim);padding:4px 6px">Gemini</td>
+        <td colspan="3" style="padding:4px 6px;color:var(--dim);font-style:italic">
+          ${event.gemini?.description||'—'}
+          ${event.gemini?.confidence
+            ? ` (${(event.gemini.confidence*100).toFixed(0)}%)`:''}
+        </td>
+      </tr>
+      <tr style="border-bottom:1px solid rgba(14,165,233,.1)">
+        <td style="color:var(--dim);padding:4px 6px">GPS</td>
+        <td colspan="2" style="padding:4px 6px">
+          ${event.lat?.toFixed(5)||'—'}, ${event.lon?.toFixed(5)||'—'}
+        </td>
+        <td style="padding:4px 6px">
+          ${event.noiseCandidate
+            ?'<span style="color:#EAB308">🟡 Ruido</span>':''}
+          ${event.geminiSuggestsDiscard
+            ?'<span style="color:#EF4444">🤖 FP</span>':''}
+        </td>
+      </tr>
+      <tr>
+        <td style="color:var(--dim);padding:4px 6px">Validación</td>
+        <td colspan="3" style="padding:4px 6px;font-weight:700">
+          ${event.humanLabel==='confirmed'
+            ? '<span style="color:#10B981">✅ Confirmado</span>'
+            : event.humanLabel==='discarded'
+            ? '<span style="color:#EF4444">❌ Falso positivo</span>'
+            : event.humanLabel==='corrected'
+            ? '<span style="color:#F59E0B">✏️ Corregido</span>'
+            : '<span style="color:var(--dim)">⏳ Sin validar</span>'}
+        </td>
+      </tr>
+    </table>`;
 
     // Miniaturas
     if(thumbs){
