@@ -3886,19 +3886,44 @@ function selectGalleryFrame(fi){
   loadFrameToCanvas(frames[fi].blob,frames[fi].label);
 }
 function loadFrameToCanvas(blob,label){
-  if(!blob)return;
-  const canvas=$('galCanvas'),wrap=$('galImageWrap'),badge=$('galFrameBadge');
+  alert('loadFrameToCanvas: blob=' + !!blob +
+    ' label=' + label);
+  if(!blob){
+    alert('ERROR: blob es null/undefined');
+    return;
+  }
+  const canvas=$('galCanvas');
+  const wrap=$('galImageWrap');
+  const badge=$('galFrameBadge');
+  alert('canvas=' + !!canvas +
+    ' wrap=' + !!wrap +
+    ' wrap size=' + wrap?.getBoundingClientRect()?.width +
+    'x' + wrap?.getBoundingClientRect()?.height);
   if(badge)badge.textContent='Frame '+label;
   const url=URL.createObjectURL(blob);
   GAL.img=new Image();
   GAL.img.onload=()=>{
+    alert('imagen cargada: ' +
+      GAL.img.width + 'x' + GAL.img.height);
     URL.revokeObjectURL(url);
     const wrapRect=wrap.getBoundingClientRect();
+    alert('wrapRect: ' + wrapRect.width +
+      'x' + wrapRect.height);
     const imgRatio=GAL.img.width/GAL.img.height;
     const wrapRatio=wrapRect.width/wrapRect.height;
-    if(imgRatio>wrapRatio){canvas.width=wrapRect.width;canvas.height=wrapRect.width/imgRatio;}
-    else{canvas.height=wrapRect.height;canvas.width=wrapRect.height*imgRatio;}
+    if(imgRatio>wrapRatio){
+      canvas.width=wrapRect.width;
+      canvas.height=wrapRect.width/imgRatio;
+    }else{
+      canvas.height=wrapRect.height;
+      canvas.width=wrapRect.height*imgRatio;
+    }
+    alert('canvas size: ' +
+      canvas.width + 'x' + canvas.height);
     drawGalleryCanvas();
+  };
+  GAL.img.onerror=(e)=>{
+    alert('ERROR cargando imagen: ' + e);
   };
   GAL.img.src=url;
 }
