@@ -839,6 +839,117 @@ function updateFusionWeights() {
   } catch(e) {}
 }
 
+// ─ Calidad de imagen — nitidez y sharpen ──────
+async function calcSharpness(blob) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      // Reducir para velocidad — 160x90 es suficiente
+      canvas.width = 160;
+      canvas.height = 90;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, 160, 90);
+      const pixels = ctx.getImageData(0, 0, 160, 90).data;
+
+      // Convertir a escala de grises
+      const gray = [];
+      for (let i = 0; i < pixels.length; i += 4) {
+        gray.push(0.299*pixels[i] +
+                  0.587*pixels[i+1] +
+                  0.114*pixels[i+2]);
+      }
+
+      // Aplicar kernel Laplaciano 3x3
+      // [0,1,0],[1,-4,1],[0,1,0]
+      const W = 160, H = 90;
+      let variance = 0;
+      let count = 0;
+      for (let y = 1; y < H-1; y++) {
+        for (let x = 1; x < W-1; x++) {
+          const lap =
+            gray[(y-1)*W+x] +
+            gray[(y+1)*W+x] +
+            gray[y*W+(x-1)] +
+            gray[y*W+(x+1)] -
+            4 * gray[y*W+x];
+          variance += lap * lap;
+          count++;
+        }
+      }
+      resolve(count > 0 ? variance / count : 0);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(0); };
+    img.src = url;
+  });
+}
+
+// Función que selecciona el frame más nítido:
+async function selectSharpestFrame(frameBlobs) {
+  if (!frameBlobs || frameBlobs.length === 0)
+    return null;
+  if (frameBlobs.length === 1)
+    return frameBlobs[0];
+
+  const sharpnesses = await Promise.all(
+    frameBlobs.map(f => calcSharpness(f.blob))
+  );
+  console.log('[Sharpness]',
+    sharpnesses.map((s,i) =>
+      frameBlobs[i].label+':'+s.toFixed(1)).join(' '));
+
+  const bestIdx = sharpnesses.indexOf(
+    Math.max(...sharpnesses));
+  return frameBlobs[bestIdx];
+}
+
+async function sharpenBlob(blob) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const W = img.width, H = img.height;
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const src = ctx.getImageData(0, 0, W, H);
+      const dst = ctx.createImageData(W, H);
+      const d = src.data, o = dst.data;
+
+      // Kernel de sharpen:
+      // [ 0,-1, 0]
+      // [-1, 5,-1]
+      // [ 0,-1, 0]
+      for (let y = 1; y < H-1; y++) {
+        for (let x = 1; x < W-1; x++) {
+          for (let c = 0; c < 3; c++) {
+            const i = (y*W+x)*4+c;
+            const val =
+              5 * d[i] -
+              d[((y-1)*W+x)*4+c] -
+              d[((y+1)*W+x)*4+c] -
+              d[(y*W+(x-1))*4+c] -
+              d[(y*W+(x+1))*4+c];
+            o[i] = Math.max(0, Math.min(255, val));
+          }
+          o[(y*W+x)*4+3] = 255; // alpha
+        }
+      }
+      ctx.putImageData(dst, 0, 0);
+      canvas.toBlob(b => resolve(b||blob),
+        'image/jpeg', 0.88);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url); resolve(blob);
+    };
+    img.src = url;
+  });
+}
+
 function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   if(!S.lastPos)return;
   const pos=getBestPosition()||S.lastPos;
@@ -878,6 +989,21 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
     : [];
   event._frameBlobs=frames;
   event._frameBlob=frames[1]?.blob||frames[0]?.blob;
+
+  // Procesado de calidad en background: seleccionar
+  // el frame más nítido y aplicar sharpen
+  if (frames.length > 0) {
+    selectSharpestFrame(frames).then(async best => {
+      if (!best) return;
+      const sharpened = await sharpenBlob(best.blob);
+      // El frame más nítido y mejorado va a YOLO y Gemini
+      event._frameBlob = sharpened;
+      // Guardar en IndexedDB marcado como 'best'
+      await saveImageBlob(event.id + '_best', sharpened);
+      console.log('[Quality] Mejor frame: ' +
+        best.label + ' → sharpenado');
+    });
+  }
 
   // Persistir cada frame en IndexedDB con su label como sufijo de clave
   frames.forEach(f => {
@@ -3230,6 +3356,8 @@ function updateAdaptiveCalUI(){
 // ─ Análisis Gemini (Fase 3) ───────────────────
 async function analyzeEventWithGemini(event,imageBlob){
   if(!imageBlob)return;
+  const bestBlob = await getImageBlob(event.id+'_best');
+  if (bestBlob) imageBlob = bestBlob;
   const base64=await new Promise(resolve=>{
     const reader=new FileReader();
     reader.onload=()=>resolve(reader.result.split(',')[1]);
@@ -3521,11 +3649,44 @@ function skipCamera(){
 async function startVideoBuffer(){
   if(VIDEO_BUF.capturing) stopVideoBuffer();
   try{
-    VIDEO_BUF.stream=await navigator.mediaDevices
-      .getUserMedia({
-        video:{facingMode:'environment'},
-        audio:false
-      });
+    const constraints = {
+      video: {
+        facingMode: 'environment',
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 30 }
+      },
+      audio: false
+    };
+    VIDEO_BUF.stream = await navigator.mediaDevices
+      .getUserMedia(constraints);
+
+    // Intentar control manual de exposición
+    const track = VIDEO_BUF.stream.getVideoTracks()[0];
+    if (track && track.getCapabilities) {
+      const caps = track.getCapabilities();
+      console.log('[Cam] Capacidades:', JSON.stringify(caps));
+      const settings = {};
+      if (caps.exposureMode?.includes('manual')) {
+        settings.exposureMode = 'manual';
+      }
+      if (caps.exposureTime) {
+        // Usar el mínimo disponible para reducir blur
+        settings.exposureTime = Math.max(
+          caps.exposureTime.min,
+          Math.min(caps.exposureTime.max, 1000)
+        );
+      }
+      if (Object.keys(settings).length > 0) {
+        try {
+          await track.applyConstraints({ advanced: [settings] });
+          console.log('[Cam] Exposición aplicada:', JSON.stringify(settings));
+        } catch(e) {
+          console.log('[Cam] Exposición no soportada: ' + e.message);
+        }
+      }
+    }
+
     if(!VIDEO_BUF.canvas){
       VIDEO_BUF.canvas=document.createElement('canvas');
     }
