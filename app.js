@@ -1537,18 +1537,14 @@ function modeBadgesHtml(modesUsed){
   return modesUsed.map(m=>MODE_ICONS[m]||m).join('+');
 }
 function emergencyCleanStorage(){
-  alert('emergencyCleanStorage: iniciando...');
   try{
     let routes=[];
     try{
       routes=JSON.parse(
         localStorage.getItem('rc_routes')||'[]');
-      alert('Rutas leídas: '+routes.length);
     }catch(e){
-      alert('rc_routes corrupto: '+e.message);
       localStorage.removeItem('rc_routes');
     }
-
     const cleaned=routes.map(r=>{
       if(!r.urbanData?.events)return r;
       return{...r,urbanData:{...r.urbanData,
@@ -1559,22 +1555,32 @@ function emergencyCleanStorage(){
         })
       }};
     });
-
     localStorage.setItem('rc_routes',
       JSON.stringify(cleaned));
-    alert('Guardadas '+cleaned.length+' rutas limpias');
-
+    try{
+      const ev=JSON.parse(
+        localStorage.getItem('rc_urban_events')||'[]');
+      const evClean=ev.map(e=>{
+        const{_images,imgB64,imageSrc,
+               _frameBlobs,_frameBlob,...c}=e;
+        return c;
+      });
+      localStorage.setItem('rc_urban_events',
+        JSON.stringify(evClean));
+    }catch(e){
+      localStorage.removeItem('rc_urban_events');
+    }
     let used=0;
     for(let k in localStorage){
       if(localStorage.hasOwnProperty(k))
         used+=(localStorage[k]?.length||0)*2;
     }
-    alert('Uso actual: '+(used/1024).toFixed(0)+' KB');
+    toast('✅ Limpiado · Rutas: '+cleaned.length+
+          ' · '+( used/1024).toFixed(0)+' KB');
     loadHistory();
   }catch(e){
-    alert('ERROR: '+e.message);
     localStorage.clear();
-    alert('localStorage limpiado completamente');
+    toast('⚠️ localStorage limpiado completamente');
     loadHistory();
   }
 }
@@ -1592,7 +1598,8 @@ function loadHistory(){
     ?'<button class="btn btn-sec" '+
       'style="margin-top:12px;font-size:.72rem;'+
       'background:rgba(239,68,68,.15);color:#EF4444;'+
-      'border:1px solid rgba(239,68,68,.3)" '+
+      'border:1px solid rgba(239,68,68,.3);'+
+      'pointer-events:all !important;opacity:1 !important" '+
       'onclick="emergencyCleanStorage()">'+
       '🧹 Limpiar almacenamiento ('+
       (_lsUsed/1024).toFixed(0)+' KB)</button>'
@@ -4404,10 +4411,4 @@ async function runAutoTests() {
 const _urlParams = new URLSearchParams(window.location.search);
 if (_urlParams.has('test') || _urlParams.has('autotest')) {
   window.addEventListener('load', () => setTimeout(runAutoTests, 1500));
-}
-
-if (_urlParams.has('clean')) {
-  window.addEventListener('load', () => {
-    setTimeout(emergencyCleanStorage, 1000);
-  });
 }
