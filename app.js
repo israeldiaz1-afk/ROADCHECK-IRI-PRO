@@ -1601,7 +1601,18 @@ function loadHistory(){
   const search=($('histSearch')?.value||'').toLowerCase();
   const cont=$('histList');if(!cont)return;
   const f=allR.filter(r=>(r.name||'').toLowerCase().includes(search)||(fmtD(Date.parse(r.date))).includes(search));
-  if(!f.length){cont.innerHTML='<div class="empty-st"><div class="empty-ico">🛣️</div><p class="empty-txt">'+(allR.length?'Sin resultados.':'Sin rutas guardadas.')+'</p>'+(allR.length?'':'<button class="btn btn-sec" style="margin-top:12px;font-size:.72rem" onclick="emergencyCleanStorage()">🧹 Limpiar almacenamiento</button>')+'</div>';return;}
+  const _lsUsed=Object.keys(localStorage).reduce((s,k)=>s+(localStorage[k]?.length||0)*2,0);
+  const _lsOverflow=_lsUsed>4*1024*1024; // >4MB de 5MB
+  const _cleanBtn=(_lsOverflow||allR.length===0)
+    ?'<button class="btn btn-sec" '+
+      'style="margin-top:12px;font-size:.72rem;'+
+      'background:rgba(239,68,68,.15);color:#EF4444;'+
+      'border:1px solid rgba(239,68,68,.3)" '+
+      'onclick="emergencyCleanStorage()">'+
+      '🧹 Limpiar almacenamiento ('+
+      (_lsUsed/1024).toFixed(0)+' KB)</button>'
+    :'';
+  if(!f.length){cont.innerHTML='<div class="empty-st"><div class="empty-ico">🛣️</div><p class="empty-txt">'+(allR.length?'Sin resultados.':'Sin rutas guardadas.')+'</p>'+_cleanBtn+'</div>';return;}
   cont.innerHTML=f.map(r=>{
     const dt=(r.dist||0)<1000?(r.dist||0).toFixed(0)+' m':((r.dist||0)/1000).toFixed(2)+' km';
     const modes=r.modesUsed||['iri'];
@@ -1654,7 +1665,7 @@ function loadHistory(){
         <button class="rca" onclick="${stopProp}expHTML('${r.id}')"><span class="rca-ico">📈</span>Informe</button>${actsExtra}
         <button class="rca del" onclick="${stopProp}deleteRoute('${r.id}')"><span class="rca-ico">🗑</span>Borrar</button>
       </div></div>`;
-  }).join('');
+  }).join('')+_cleanBtn;
 }
 function filterHistory(q){loadHistory();}
 function deleteRoute(id){if(confirm('¿Eliminar esta ruta?')){delRoute(id);loadHistory();toast('Eliminada');}}
