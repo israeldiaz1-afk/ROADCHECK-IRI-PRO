@@ -3775,15 +3775,25 @@ function renderGalleryItem(idx){
     isTouchDevice()?'none':'block';
 
   async function ensureFrames(ev){
-    if(ev._frameBlobs?.length>0)return;
+    alert('ensureFrames: _frameBlobs=' +
+      (ev._frameBlobs?.length||0) +
+      ' id=' + ev.id);
+    if(ev._frameBlobs?.length>0){
+      alert('usando frames en memoria: ' +
+        ev._frameBlobs.length);
+      return;
+    }
     const[bA,bB,bC]=await getImageBlobs([
       ev.id+'_A',ev.id+'_B',ev.id+'_C'
     ]);
+    alert('IndexedDB: A=' + !!bA +
+      ' B=' + !!bB + ' C=' + !!bC);
     const fb=[];
     if(bA)fb.push({blob:bA,label:'A',diff:0});
     if(bB)fb.push({blob:bB,label:'B',diff:0});
     if(bC)fb.push({blob:bC,label:'C',diff:0});
     ev._frameBlobs=fb;
+    alert('frames recuperados: ' + fb.length);
   }
 
   ensureFrames(event).then(()=>{
