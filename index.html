@@ -444,6 +444,16 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 .av-zfill.event{animation:zEventFlash .7s ease-out;}
 .av-zcenter{position:absolute;top:50%;left:0;right:0;height:2px;background:rgba(14,165,233,.25);transform:translateY(-50%);}
 .av-zval{font-size:.62rem;color:var(--dim);font-family:var(--mono);}
+.av-gyro-wrap{
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  flex:1;
+}
+#gyroCanvas{
+  border-radius:50%;
+  background:var(--s2);
+  border:1px solid rgba(14,165,233,.2);
+}
 #btnStop{position:relative!important;z-index:9999!important;pointer-events:all!important;}
 </style>
 </head>
@@ -744,6 +754,15 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
         <div class="av-zcenter"></div>
       </div>
       <div class="av-zval" id="avZval">0.0</div>
+    </div>
+    <div class="av-gyro-wrap">
+      <canvas id="gyroCanvas"
+              width="80" height="80"></canvas>
+      <div class="av-label"
+           style="font-size:.55rem;color:var(--dim);
+                  text-align:center;margin-top:2px">
+        Giroscopio
+      </div>
     </div>
   </div>
   <div class="m-stats">

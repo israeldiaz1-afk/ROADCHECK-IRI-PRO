@@ -3029,6 +3029,76 @@ function updateAccelViz(ax,ay,az){
     zFill.className='av-zfill'+(Math.abs(vertRaw)>3?' bad':Math.abs(vertRaw)>1.5?' warn':'');
   }
   if(zVal)zVal.textContent=vertRaw.toFixed(2);
+  updateGyroViz();
+}
+function drawArrow(ctx,x1,y1,x2,y2,color,magnitude){
+  const angle=Math.atan2(y2-y1,x2-x1);
+  const len=Math.sqrt((x2-x1)**2+(y2-y1)**2);
+  const headLen=Math.max(6,len*0.3);
+  ctx.strokeStyle=color;
+  ctx.fillStyle=color;
+  ctx.lineWidth=1.5+magnitude*2;
+  ctx.globalAlpha=0.4+magnitude*0.6;
+  ctx.beginPath();
+  ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-headLen*Math.cos(angle-Math.PI/6),
+             y2-headLen*Math.sin(angle-Math.PI/6));
+  ctx.lineTo(x2-headLen*Math.cos(angle+Math.PI/6),
+             y2-headLen*Math.sin(angle+Math.PI/6));
+  ctx.closePath();ctx.fill();
+  ctx.globalAlpha=1;
+}
+
+function updateGyroViz(){
+  const canvas=$('gyroCanvas');
+  if(!canvas||!S.gyro)return;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  const cx=W/2,cy=H/2,R=W/2-8;
+
+  ctx.clearRect(0,0,W,H);
+
+  // Círculo base
+  ctx.beginPath();
+  ctx.arc(cx,cy,R,0,Math.PI*2);
+  ctx.strokeStyle='rgba(14,165,233,.2)';
+  ctx.lineWidth=1;ctx.stroke();
+
+  // Cruz central
+  ctx.strokeStyle='rgba(14,165,233,.15)';
+  ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(cx-R,cy);ctx.lineTo(cx+R,cy);
+  ctx.moveTo(cx,cy-R);ctx.lineTo(cx,cy+R);
+  ctx.stroke();
+
+  // Flecha ROLL (eje X, rojo — rotación lateral)
+  // Bache en una rueda → roll transitorio
+  const rollMag=Math.min(Math.abs(S.gyro.x)/2,1);
+  const rollDir=S.gyro.x>=0?1:-1;
+  if(rollMag>0.02){
+    drawArrow(ctx,cx,cy,
+      cx+rollDir*rollMag*R*0.85,cy,
+      '#EF4444',rollMag);
+  }
+
+  // Flecha PITCH (eje Y, azul — rotación longitudinal)
+  // Frenada/badén → pitch sostenido
+  const pitchMag=Math.min(Math.abs(S.gyro.y)/2,1);
+  const pitchDir=S.gyro.y>=0?-1:1;
+  if(pitchMag>0.02){
+    drawArrow(ctx,cx,cy,
+      cx,cy+pitchDir*pitchMag*R*0.85,
+      '#0EA5E9',pitchMag);
+  }
+
+  // Punto central
+  ctx.beginPath();
+  ctx.arc(cx,cy,3,0,Math.PI*2);
+  ctx.fillStyle='rgba(14,165,233,.6)';
+  ctx.fill();
 }
 function flashAccelEvent(color){
   const dot=$('avDot'),zFill=$('avZfill');
