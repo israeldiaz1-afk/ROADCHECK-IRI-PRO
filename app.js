@@ -1532,6 +1532,63 @@ const MODE_ICONS={iri:'🛣️',urban:'🏙️',comfort:'📳'};
 function modeBadgesHtml(modesUsed){
   return modesUsed.map(m=>MODE_ICONS[m]||m).join('+');
 }
+function emergencyCleanStorage(){
+  try{
+    // Intentar leer rutas aunque estén corruptas
+    let routes=[];
+    try{
+      routes=JSON.parse(localStorage.getItem('rc_routes')||'[]');
+    }catch(e){
+      toast('⚠️ Rutas corruptas — limpiando...');
+      localStorage.removeItem('rc_routes');
+    }
+
+    // Limpiar imágenes de cada ruta
+    const cleaned=routes.map(r=>{
+      if(!r.urbanData?.events) return r;
+      return{
+        ...r,
+        urbanData:{
+          ...r.urbanData,
+          events:r.urbanData.events.map(e=>{
+            const{_images,imgB64,imageSrc,_frameBlobs,_frameBlob,...clean}=e;
+            return clean;
+          })
+        }
+      };
+    });
+
+    // Guardar versión limpia
+    localStorage.setItem('rc_routes',JSON.stringify(cleaned));
+
+    // Limpiar también rc_urban_events
+    try{
+      const ev=JSON.parse(localStorage.getItem('rc_urban_events')||'[]');
+      const evClean=ev.map(e=>{
+        const{_images,imgB64,imageSrc,_frameBlobs,_frameBlob,...clean}=e;
+        return clean;
+      });
+      localStorage.setItem('rc_urban_events',JSON.stringify(evClean));
+    }catch(e){
+      localStorage.removeItem('rc_urban_events');
+    }
+
+    // Calcular uso actual
+    let used=0;
+    for(let k in localStorage){
+      if(localStorage.hasOwnProperty(k)) used+=(localStorage[k]?.length||0)*2;
+    }
+
+    toast('✅ Limpiado · Rutas: '+cleaned.length+' · Uso: '+(used/1024).toFixed(0)+' KB');
+    loadHistory();
+  }catch(e){
+    // Último recurso: limpiar todo
+    toast('⚠️ Error grave — limpiando todo...');
+    localStorage.clear();
+    toast('localStorage limpiado completamente');
+    loadHistory();
+  }
+}
 function loadHistory(){
   // Unified routes (new format) + legacy comfort routes (old format)
   const unified=allRoutes().map(r=>({...r,modesUsed:r.modesUsed||['iri'],_src:'unified'}));
@@ -1540,7 +1597,7 @@ function loadHistory(){
   const search=($('histSearch')?.value||'').toLowerCase();
   const cont=$('histList');if(!cont)return;
   const f=allR.filter(r=>(r.name||'').toLowerCase().includes(search)||(fmtD(Date.parse(r.date))).includes(search));
-  if(!f.length){cont.innerHTML='<div class="empty-st"><div class="empty-ico">🛣️</div><p class="empty-txt">'+(allR.length?'Sin resultados.':'Sin rutas guardadas.')+'</p></div>';return;}
+  if(!f.length){cont.innerHTML='<div class="empty-st"><div class="empty-ico">🛣️</div><p class="empty-txt">'+(allR.length?'Sin resultados.':'Sin rutas guardadas.')+'</p>'+(allR.length?'':'<button class="btn btn-sec" style="margin-top:12px;font-size:.72rem" onclick="emergencyCleanStorage()">🧹 Limpiar almacenamiento</button>')+'</div>';return;}
   cont.innerHTML=f.map(r=>{
     const dt=(r.dist||0)<1000?(r.dist||0).toFixed(0)+' m':((r.dist||0)/1000).toFixed(2)+' km';
     const modes=r.modesUsed||['iri'];
