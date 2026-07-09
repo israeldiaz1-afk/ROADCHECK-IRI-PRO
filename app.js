@@ -3682,31 +3682,64 @@ function renderGalleryItem(idx){
   $('galPrev').disabled=idx===0;
   $('galNext').disabled=idx===GAL.items.length-1;
   GAL.scale=1;GAL.offsetX=0;GAL.offsetY=0;
-  GAL.activeFrameIdx=1;
-  const frames=event._frameBlobs||[];
-  const noFrames=frames.length===0;
-  const canvas=$('galCanvas'),wrap=$('galImageWrap'),noImg=$('galNoImage'),
-        thumbs=$('galThumbs'),badge=$('galFrameBadge');
-  if(thumbs){
-    if(noFrames){thumbs.innerHTML='';thumbs.style.display='none';}
-    else{
-      thumbs.style.display='flex';
-      thumbs.innerHTML=frames.map((f,fi)=>{
-        const url=URL.createObjectURL(f.blob);
-        const active=fi===GAL.activeFrameIdx?' active':'';
-        setTimeout(()=>URL.revokeObjectURL(url),60000);
-        return`<div class="gal-thumb-wrap"><img class="gal-thumb${active}" src="${url}" onclick="selectGalleryFrame(${fi})" data-fi="${fi}"><div class="gal-thumb-label">${f.label} ${f.diff<100?'✓':'~'}${f.diff.toFixed(0)}ms</div></div>`;
-      }).join('');
+  GAL.activeFrameIdx = 1;
+
+  async function ensureFrames(event) {
+    if (event._frameBlobs?.length > 0) return;
+    const [bA,bB,bC] = await getImageBlobs([
+      event.id+'_A', event.id+'_B', event.id+'_C'
+    ]);
+    const frameBlobs = [];
+    if(bA) frameBlobs.push({blob:bA,label:'A',diff:0});
+    if(bB) frameBlobs.push({blob:bB,label:'B',diff:0});
+    if(bC) frameBlobs.push({blob:bC,label:'C',diff:0});
+    event._frameBlobs = frameBlobs;
+  }
+
+  ensureFrames(event).then(() => {
+    const frames = event._frameBlobs || [];
+    const noFrames = frames.length === 0;
+    const canvas=$('galCanvas'),
+          wrap=$('galImageWrap'),
+          noImg=$('galNoImage'),
+          thumbs=$('galThumbs'),
+          badge=$('galFrameBadge');
+
+    if(thumbs){
+      if(noFrames){
+        thumbs.innerHTML='';
+        thumbs.style.display='none';
+      } else {
+        thumbs.style.display='flex';
+        thumbs.innerHTML=frames.map((f,fi)=>{
+          const url=URL.createObjectURL(f.blob);
+          const active=fi===GAL.activeFrameIdx?' active':'';
+          setTimeout(()=>URL.revokeObjectURL(url),60000);
+          return`<div class="gal-thumb-wrap">
+            <img class="gal-thumb${active}"
+                 src="${url}"
+                 onclick="selectGalleryFrame(${fi})"
+                 data-fi="${fi}">
+            <div class="gal-thumb-label">
+              ${f.label} ${f.diff<100?'✓':'~'}${f.diff.toFixed(0)}ms
+            </div></div>`;
+        }).join('');
+      }
     }
-  }
-  if(noFrames){
-    canvas.style.display='none';noImg.classList.remove('hidden');
-    if(badge)badge.textContent='';
-  } else {
-    noImg.classList.add('hidden');canvas.style.display='block';
-    loadFrameToCanvas(frames[GAL.activeFrameIdx]?.blob||frames[0]?.blob,
-                      frames[GAL.activeFrameIdx]?.label||'B');
-  }
+
+    if(noFrames){
+      canvas.style.display='none';
+      noImg.classList.remove('hidden');
+      if(badge)badge.textContent='';
+    } else {
+      noImg.classList.add('hidden');
+      canvas.style.display='block';
+      loadFrameToCanvas(
+        frames[GAL.activeFrameIdx]?.blob||frames[0]?.blob,
+        frames[GAL.activeFrameIdx]?.label||'B'
+      );
+    }
+  });
   const typeIcons={pothole:'🕳️',manhole:'⭕',speedbump:'⛰️',crack:'〰️',degraded:'🔴',patch:'🔧',unknown:'❓'};
   const sevColors={leve:'#F59E0B',moderado:'#F97316',grave:'#EF4444'};
   const icon=typeIcons[event.type]||'❓';
