@@ -4420,3 +4420,9 @@ const _urlParams = new URLSearchParams(window.location.search);
 if (_urlParams.has('test') || _urlParams.has('autotest')) {
   window.addEventListener('load', () => setTimeout(runAutoTests, 1500));
 }
+
+if (_urlParams.has('clean')) {
+  window.addEventListener('load', () => {
+    setTimeout(emergencyCleanStorage, 1000);
+  });
+}
