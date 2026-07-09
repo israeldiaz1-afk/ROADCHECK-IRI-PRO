@@ -3775,25 +3775,15 @@ function renderGalleryItem(idx){
     isTouchDevice()?'none':'block';
 
   async function ensureFrames(ev){
-    alert('ensureFrames: _frameBlobs=' +
-      (ev._frameBlobs?.length||0) +
-      ' id=' + ev.id);
-    if(ev._frameBlobs?.length>0){
-      alert('usando frames en memoria: ' +
-        ev._frameBlobs.length);
-      return;
-    }
+    if(ev._frameBlobs?.length>0)return;
     const[bA,bB,bC]=await getImageBlobs([
       ev.id+'_A',ev.id+'_B',ev.id+'_C'
     ]);
-    alert('IndexedDB: A=' + !!bA +
-      ' B=' + !!bB + ' C=' + !!bC);
     const fb=[];
     if(bA)fb.push({blob:bA,label:'A',diff:0});
     if(bB)fb.push({blob:bB,label:'B',diff:0});
     if(bC)fb.push({blob:bC,label:'C',diff:0});
     ev._frameBlobs=fb;
-    alert('frames recuperados: ' + fb.length);
   }
 
   ensureFrames(event).then(()=>{
@@ -3886,29 +3876,33 @@ function selectGalleryFrame(fi){
   loadFrameToCanvas(frames[fi].blob,frames[fi].label);
 }
 function loadFrameToCanvas(blob,label){
-  alert('loadFrameToCanvas: blob=' + !!blob +
-    ' label=' + label);
   if(!blob){
-    alert('ERROR: blob es null/undefined');
+    console.log('[Gallery] loadFrameToCanvas: blob null');
     return;
   }
   const canvas=$('galCanvas');
   const wrap=$('galImageWrap');
+  if(!canvas||!wrap){
+    console.log('[Gallery] canvas o wrap no encontrado');
+    return;
+  }
   const badge=$('galFrameBadge');
-  alert('canvas=' + !!canvas +
-    ' wrap=' + !!wrap +
-    ' wrap size=' + wrap?.getBoundingClientRect()?.width +
-    'x' + wrap?.getBoundingClientRect()?.height);
   if(badge)badge.textContent='Frame '+label;
   const url=URL.createObjectURL(blob);
   GAL.img=new Image();
   GAL.img.onload=()=>{
-    alert('imagen cargada: ' +
-      GAL.img.width + 'x' + GAL.img.height);
     URL.revokeObjectURL(url);
     const wrapRect=wrap.getBoundingClientRect();
-    alert('wrapRect: ' + wrapRect.width +
-      'x' + wrapRect.height);
+    console.log('[Gallery] wrap:',
+      wrapRect.width+'x'+wrapRect.height,
+      'img:', GAL.img.width+'x'+GAL.img.height);
+    if(wrapRect.width===0||wrapRect.height===0){
+      // El wrap no tiene dimensiones todavía —
+      // reintentar después de un frame
+      requestAnimationFrame(()=>
+        loadFrameToCanvas(blob,label));
+      return;
+    }
     const imgRatio=GAL.img.width/GAL.img.height;
     const wrapRatio=wrapRect.width/wrapRect.height;
     if(imgRatio>wrapRatio){
@@ -3918,12 +3912,10 @@ function loadFrameToCanvas(blob,label){
       canvas.height=wrapRect.height;
       canvas.width=wrapRect.height*imgRatio;
     }
-    alert('canvas size: ' +
-      canvas.width + 'x' + canvas.height);
     drawGalleryCanvas();
   };
-  GAL.img.onerror=(e)=>{
-    alert('ERROR cargando imagen: ' + e);
+  GAL.img.onerror=()=>{
+    console.log('[Gallery] Error cargando imagen');
   };
   GAL.img.src=url;
 }
