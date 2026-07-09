@@ -3291,28 +3291,71 @@ async function runYOLO(imageBlob) {
 
 function parseYOLOOutput(results, origW, origH) {
   const outputName = Object.keys(results)[0];
-  const data = results[outputName].data;
-  const numClasses = YOLO_STATE.CLASS_NAMES.length;
-  const numAnchors = data.length / (4 + numClasses);
+  const output = results[outputName];
+  const data = output.data;
+  const dims = output.dims; // [batch, ?, ?]
   const SZ = YOLO_STATE.INPUT_SIZE;
+  const numClasses = YOLO_STATE.CLASS_NAMES.length;
   const detections = [];
 
+  // YOLO11 puede tener dos formatos de salida:
+  // Formato A: [1, 4+numClasses, numAnchors] — transpuesto
+  // Formato B: [1, numAnchors, 4+numClasses] — directo
+  // Detectar cual es según dims[1] vs dims[2]
+
+  const dim1 = dims[1], dim2 = dims[2];
+  const isTransposed = dim1 === (4 + numClasses);
+  const numAnchors = isTransposed ? dim2 : dim1;
+
+  console.log('[YOLO] dims:', dims,
+    'formato:', isTransposed ? 'transpuesto' : 'directo',
+    'anchors:', numAnchors);
+
   for (let i = 0; i < numAnchors; i++) {
-    const off = i * (4 + numClasses);
-    const cx = data[off], cy = data[off+1];
-    const w  = data[off+2], h = data[off+3];
-    let maxConf = 0, maxClass = 0;
-    for (let c = 0; c < numClasses; c++) {
-      if (data[off+4+c] > maxConf) { maxConf = data[off+4+c]; maxClass = c; }
+    let cx, cy, w, h, maxConf = 0, maxClass = 0;
+
+    if (isTransposed) {
+      // Formato A: data[row * numAnchors + i]
+      cx = data[0 * numAnchors + i];
+      cy = data[1 * numAnchors + i];
+      w  = data[2 * numAnchors + i];
+      h  = data[3 * numAnchors + i];
+      for (let c = 0; c < numClasses; c++) {
+        const conf = data[(4+c) * numAnchors + i];
+        if (conf > maxConf) { maxConf = conf; maxClass = c; }
+      }
+    } else {
+      // Formato B: data[i * (4+numClasses) + col]
+      const off = i * (4 + numClasses);
+      cx = data[off];
+      cy = data[off+1];
+      w  = data[off+2];
+      h  = data[off+3];
+      for (let c = 0; c < numClasses; c++) {
+        const conf = data[off+4+c];
+        if (conf > maxConf) { maxConf = conf; maxClass = c; }
+      }
     }
+
     if (maxConf < YOLO_STATE.CONF_THRESHOLD) continue;
+
+    // Las coordenadas vienen normalizadas (0-1)
+    // o en píxeles del input (0-640) — detectar cual
+    const coordScale = (cx > 1 || cy > 1) ? 1/SZ : 1;
+
     detections.push({
-      x1: (cx-w/2)*origW/SZ, y1: (cy-h/2)*origH/SZ,
-      x2: (cx+w/2)*origW/SZ, y2: (cy+h/2)*origH/SZ,
-      conf: maxConf, class: maxClass,
+      x1: (cx - w/2) * coordScale * origW,
+      y1: (cy - h/2) * coordScale * origH,
+      x2: (cx + w/2) * coordScale * origW,
+      y2: (cy + h/2) * coordScale * origH,
+      conf: maxConf,
+      class: maxClass,
       className: YOLO_STATE.CLASS_NAMES[maxClass]
     });
   }
+
+  console.log('[YOLO] Detecciones antes de NMS:',
+    detections.length);
   return applyNMS(detections);
 }
 
