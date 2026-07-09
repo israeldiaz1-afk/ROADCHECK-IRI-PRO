@@ -1537,59 +1537,44 @@ function modeBadgesHtml(modesUsed){
   return modesUsed.map(m=>MODE_ICONS[m]||m).join('+');
 }
 function emergencyCleanStorage(){
+  alert('emergencyCleanStorage: iniciando...');
   try{
-    // Intentar leer rutas aunque estén corruptas
     let routes=[];
     try{
-      routes=JSON.parse(localStorage.getItem('rc_routes')||'[]');
+      routes=JSON.parse(
+        localStorage.getItem('rc_routes')||'[]');
+      alert('Rutas leídas: '+routes.length);
     }catch(e){
-      toast('⚠️ Rutas corruptas — limpiando...');
+      alert('rc_routes corrupto: '+e.message);
       localStorage.removeItem('rc_routes');
     }
 
-    // Limpiar imágenes de cada ruta
     const cleaned=routes.map(r=>{
-      if(!r.urbanData?.events) return r;
-      return{
-        ...r,
-        urbanData:{
-          ...r.urbanData,
-          events:r.urbanData.events.map(e=>{
-            const{_images,imgB64,imageSrc,_frameBlobs,_frameBlob,...clean}=e;
-            return clean;
-          })
-        }
-      };
+      if(!r.urbanData?.events)return r;
+      return{...r,urbanData:{...r.urbanData,
+        events:r.urbanData.events.map(e=>{
+          const{_images,imgB64,imageSrc,
+                _frameBlobs,_frameBlob,...c}=e;
+          return c;
+        })
+      }};
     });
 
-    // Guardar versión limpia
-    localStorage.setItem('rc_routes',JSON.stringify(cleaned));
+    localStorage.setItem('rc_routes',
+      JSON.stringify(cleaned));
+    alert('Guardadas '+cleaned.length+' rutas limpias');
 
-    // Limpiar también rc_urban_events
-    try{
-      const ev=JSON.parse(localStorage.getItem('rc_urban_events')||'[]');
-      const evClean=ev.map(e=>{
-        const{_images,imgB64,imageSrc,_frameBlobs,_frameBlob,...clean}=e;
-        return clean;
-      });
-      localStorage.setItem('rc_urban_events',JSON.stringify(evClean));
-    }catch(e){
-      localStorage.removeItem('rc_urban_events');
-    }
-
-    // Calcular uso actual
     let used=0;
     for(let k in localStorage){
-      if(localStorage.hasOwnProperty(k)) used+=(localStorage[k]?.length||0)*2;
+      if(localStorage.hasOwnProperty(k))
+        used+=(localStorage[k]?.length||0)*2;
     }
-
-    toast('✅ Limpiado · Rutas: '+cleaned.length+' · Uso: '+(used/1024).toFixed(0)+' KB');
+    alert('Uso actual: '+(used/1024).toFixed(0)+' KB');
     loadHistory();
   }catch(e){
-    // Último recurso: limpiar todo
-    toast('⚠️ Error grave — limpiando todo...');
+    alert('ERROR: '+e.message);
     localStorage.clear();
-    toast('localStorage limpiado completamente');
+    alert('localStorage limpiado completamente');
     loadHistory();
   }
 }
