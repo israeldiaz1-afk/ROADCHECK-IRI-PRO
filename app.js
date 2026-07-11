@@ -93,6 +93,110 @@ function exportRecording() {
   toast('📼 Grabación exportada — ' + REC.samples.length + ' muestras, ' + REC.gps.length + ' GPS');
 }
 
+// ─ Fase 2 / S2: Replay de sesiones grabadas (?sim) ─
+// Clave arquitectónica: inyecta en onRaw()/onGyro()/onGPS(), no por debajo —
+// así TODO el pipeline (baseline, detectEvent, features, scoring, fusión,
+// GPS) se ejecuta idéntico a producción. El usuario debe activar el modo
+// Urbano y pulsar Iniciar ANTES de cargar la grabación, igual que en campo.
+const SIM = { active: false, data: null, idx: 0, gpsIdx: 0, t0: 0, speed: 1 };
+
+async function startSimulation(file, speedFactor = 1) {
+  SIM.data = JSON.parse(await file.text());
+  SIM.idx = 0; SIM.gpsIdx = 0;
+  SIM.active = true; SIM.speed = speedFactor; SIM.t0 = performance.now();
+  // Cortocircuitar hardware:
+  S.sensorOK = true;
+  S.grav = SIM.data.calibration.grav;
+  S.gravMag = SIM.data.calibration.gravMag;
+  if (SIM.data.calibration.noiseLevel != null) S.noiseLevel = SIM.data.calibration.noiseLevel;
+  if (SIM.data.calibration.gyroOffset) S.gyroOffset = SIM.data.calibration.gyroOffset;
+  S.calibrated = true;
+  toast('🎬 Replay iniciado — ' + SIM.data.samples.length + ' muestras a ' + speedFactor + '×');
+  simTick();
+}
+function stopSimulation() {
+  SIM.active = false;
+  toast('⏹ Replay detenido');
+}
+function simTick() {
+  if (!SIM.active) return;
+  const elapsed = (performance.now() - SIM.t0) * SIM.speed;
+  const t0 = SIM.data.samples[0]?.t ?? 0;
+  while (SIM.idx < SIM.data.samples.length &&
+         SIM.data.samples[SIM.idx].t - t0 <= elapsed) {
+    const s = SIM.data.samples[SIM.idx++];
+    onGyro(s.gx, s.gy, s.gz);
+    onRaw(s.x, s.y, s.z);
+  }
+  while (SIM.gpsIdx < SIM.data.gps.length &&
+         SIM.data.gps[SIM.gpsIdx].t - t0 <= elapsed) {
+    const g = SIM.data.gps[SIM.gpsIdx++];
+    onGPS({coords:{latitude:g.lat,longitude:g.lon,speed:g.speed/3.6,accuracy:g.accuracy}});
+  }
+  // Fin de la grabación — evita un rAF infinito en vacío
+  if (SIM.idx >= SIM.data.samples.length && SIM.gpsIdx >= SIM.data.gps.length) {
+    SIM.active = false;
+    toast('🏁 Replay finalizado');
+    return;
+  }
+  requestAnimationFrame(simTick);
+}
+
+function initSimPanel() {
+  if ($('simPanel')) return;
+  const panel = document.createElement('div');
+  panel.id = 'simPanel';
+  panel.style.cssText = `
+    position:fixed;bottom:70px;left:10px;z-index:99998;
+    background:var(--s1,#0a1628);border:1px solid rgba(14,165,233,.35);
+    border-radius:10px;padding:10px 12px;
+    font-family:var(--mono,monospace);font-size:.7rem;color:#cbd5e1;
+    display:flex;flex-direction:column;gap:6px;max-width:220px;
+  `;
+  panel.innerHTML = `
+    <div style="color:#0EA5E9;font-weight:700">🎬 Replay (?sim)</div>
+    <div style="color:#64748b;line-height:1.4">
+      1. Activa modo Urbano y pulsa Iniciar<br>
+      2. Carga aquí el JSON grabado con ?record
+    </div>
+    <label style="cursor:pointer;background:rgba(14,165,233,.15);
+                   border:1px solid rgba(14,165,233,.3);border-radius:6px;
+                   padding:6px 8px;text-align:center">
+      📂 Cargar grabación
+      <input type="file" id="simFileInput" accept=".json,application/json"
+             style="display:none">
+    </label>
+    <div style="display:flex;gap:6px;align-items:center">
+      <span>Velocidad</span>
+      <select id="simSpeedSel" style="flex:1;background:#05111F;color:#fff;
+              border:1px solid rgba(14,165,233,.3);border-radius:4px">
+        <option value="1">1×</option>
+        <option value="2">2×</option>
+        <option value="4" selected>4×</option>
+        <option value="8">8×</option>
+      </select>
+    </div>
+    <button id="simStopBtn" style="display:none;background:rgba(239,68,68,.15);
+            border:1px solid rgba(239,68,68,.3);color:#EF4444;border-radius:6px;
+            padding:6px 8px;cursor:pointer">⏹ Detener replay</button>
+  `;
+  document.body.appendChild(panel);
+  $('simFileInput').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const speed = parseFloat($('simSpeedSel').value) || 1;
+    startSimulation(f, speed);
+    $('simStopBtn').style.display = 'block';
+  });
+  $('simStopBtn').addEventListener('click', () => {
+    stopSimulation();
+    $('simStopBtn').style.display = 'none';
+  });
+}
+if (_urlParams.has('sim')) {
+  window.addEventListener('load', initSimPanel);
+}
+
 // ════════════════════════════════════════════════
 // PERSISTENCIA DE IMÁGENES — IndexedDB
 // ════════════════════════════════════════════════
