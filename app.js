@@ -61,8 +61,7 @@ const S={
     weights: {
       vibration: 0.30,
       yolo:      0.25,
-      gemini:    0.30,
-      video:     0.15
+      gemini:    0.30
     },
     CONFIRM_THRESHOLD: 0.45,
     MIN_LAYERS: 2,
@@ -806,33 +805,29 @@ function evaluateFusion(event) {
 }
 
 function updateFusionWeights() {
-  const complete = S.fusion.history.filter(h =>
+  // Solo eventos validados por humano Y con las 3 capas
+  const labeled = S.fusion.history.filter(h =>
+    h.humanLabel &&
     Object.values(h.scores).every(v => v !== null)
   );
-  if (complete.length < 20) return;
-
-  const LEARNING_RATE = 0.01;
+  if (labeled.length < 20) return;
+  const LR = 0.05;
   const w = S.fusion.weights;
-
-  complete.slice(-50).forEach(h => {
-    const target = h.confirmed ? 1 : 0;
-    const predicted = computeFusionScore(h.scores);
-    if (predicted === null) return;
-    const error = target - predicted;
-
-    if (h.scores.vibration !== null)
-      w.vibration += LEARNING_RATE * error * h.scores.vibration;
-    if (h.scores.yolo !== null)
-      w.yolo      += LEARNING_RATE * error * h.scores.yolo;
-    if (h.scores.gemini !== null)
-      w.gemini    += LEARNING_RATE * error * h.scores.gemini;
-
-    // Normalizar y mantener mínimos
-    const total = w.vibration + w.yolo + w.gemini + w.video;
-    Object.keys(w).forEach(k =>
-      w[k] = Math.max(0.05, w[k] / total)
-    );
+  labeled.slice(-100).forEach(h => {
+    const target = (h.humanLabel === 'confirmed' || h.humanLabel === 'corrected') ? 1 : 0;
+    const p = computeFusionScore(h.scores);
+    if (p === null) return;
+    const err = target - p;
+    const totW = w.vibration + w.yolo + w.gemini;   // sin 'video'
+    // Gradiente correcto de la media ponderada: dp/dw_i = (s_i − p)/Σw
+    w.vibration += LR * err * (h.scores.vibration - p) / totW;
+    w.yolo      += LR * err * (h.scores.yolo      - p) / totW;
+    w.gemini    += LR * err * (h.scores.gemini    - p) / totW;
   });
+  // Normalizar UNA vez, al final: floor primero, división después
+  ['vibration','yolo','gemini'].forEach(k => w[k] = Math.max(0.05, w[k]));
+  const t = w.vibration + w.yolo + w.gemini;
+  ['vibration','yolo','gemini'].forEach(k => w[k] /= t);
 
   try {
     const key = 'rc_fusion_weights_' + (S.vehicleId||'default');
@@ -4165,6 +4160,7 @@ function saveValidationProgress(routeId){
     if (S._lastSavedRouteWithBlobs?.id === routeId) {
       S._lastSavedRouteWithBlobs = null;
     }
+    updateFusionWeights();
   }catch(e){
     console.error('[saveValidationProgress]',e.message);
     toast('⚠️ Error guardando progreso');
@@ -4622,6 +4618,14 @@ function validateEvent(label){
   saveToTrainingDataset(event,event._frameBlob,label);
   const stored=S.urbanEvents.find(e=>e.id===event.id);
   if(stored){stored.humanLabel=label;stored.humanTs=Date.now();}
+  // Actualizar la entrada MÁS RECIENTE del historial de fusión para este
+  // evento (la última contiene las 3 capas completas; find() cogería la
+  // primera, incompleta, y updateFusionWeights() nunca la usaría)
+  let histEntry=null;
+  for(let i=S.fusion.history.length-1;i>=0;i--){
+    if(S.fusion.history[i].eventId===event.id){histEntry=S.fusion.history[i];break;}
+  }
+  if(histEntry)histEntry.humanLabel=label;
   const nextUnvalidated=GAL.items.findIndex((it,i)=>i>GAL.idx&&!it.event.humanLabel);
   if(nextUnvalidated!==-1){setTimeout(()=>galleryNav(nextUnvalidated-GAL.idx),300);}
   else toast('✅ Sesión validada — '+GAL.items.filter(i=>i.event.humanLabel).length+' eventos');
