@@ -3435,7 +3435,7 @@ function updateUrbanMeasPanel(){
 }
 
 // ─ Buffer de vídeo (Fase 2) ───────────────────
-const VIDEO_BUF={stream:null,video:null,canvas:null,ctx:null,frames:[],maxAgeMs:3000,capturing:false,captureInterval:null};
+const VIDEO_BUF={stream:null,video:null,canvas:null,ctx:null,frames:[],maxAgeMs:5000,captureIntervalMs:17,capturing:false,captureInterval:null};
 
 const YOLO_STATE = {
   session: null,
@@ -3653,7 +3653,7 @@ async function startVideoBuffer(){
         facingMode: 'environment',
         width: { ideal: 1280 },
         height: { ideal: 720 },
-        frameRate: { ideal: 30 }
+        frameRate: { ideal: 60 }
       },
       audio: false
     };
@@ -3721,8 +3721,12 @@ async function startVideoBuffer(){
             VIDEO_BUF.frames.shift();
         },'image/jpeg',0.75);
       }catch(e){}
-    },250);
+    },VIDEO_BUF.captureIntervalMs);
     VIDEO_BUF.capturing=true;
+    const trackSettings=track?.getSettings?.()||{};
+    console.log('[Video] Buffer activo — frameRate='+
+      (trackSettings.frameRate||'?')+' intervalMs='+
+      VIDEO_BUF.captureIntervalMs);
     toast('📷 Cámara lista — '+
           VIDEO_BUF.stream.getVideoTracks()[0].label);
   }catch(e){
@@ -3771,9 +3775,11 @@ function extractFramesForEvent(eventTs,speedKmh){
   if(!VIDEO_BUF.frames.length){return[];}
   const D=calcFrameDelay(speedKmh);
   const targets=[
-    {label:'A',ts:eventTs-(D+400)},
-    {label:'B',ts:eventTs-(D+200)},
-    {label:'C',ts:eventTs-D}
+    {label:'A',ts:eventTs-(D+600)},
+    {label:'B',ts:eventTs-(D+400)},
+    {label:'C',ts:eventTs-(D+200)},
+    {label:'D',ts:eventTs-D},
+    {label:'E',ts:eventTs-(D-200)}
   ];
   const results=targets.map(t=>{
     let best=null,bestDiff=Infinity;
