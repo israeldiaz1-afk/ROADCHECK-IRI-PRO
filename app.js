@@ -1102,6 +1102,82 @@ async function applyCLAHEToBlob(blob, strength = 0.5) {
   });
 }
 
+// ─ Anotaciones visuales para validación humana ──────
+async function annotateFrameForHuman(blob, event) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const W = img.width, H = img.height;
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      // 1. Bounding box de YOLO si existe
+      if (event.yolo?.detections?.length > 0) {
+        const colors = {
+          pothole:'#EF4444', alligator_crack:'#F97316',
+          longitudinal_crack:'#F59E0B',
+          transverse_crack:'#EAB308', manhole:'#8B5CF6'
+        };
+        event.yolo.detections.forEach(det => {
+          const color = colors[det.className]||'#0EA5E9';
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3;
+          ctx.strokeRect(det.x1, det.y1,
+            det.x2-det.x1, det.y2-det.y1);
+          // Etiqueta del bounding box
+          ctx.fillStyle = color;
+          ctx.font = 'bold 14px monospace';
+          ctx.fillRect(det.x1, det.y1-20,
+            ctx.measureText(
+              det.className+' '+
+              (det.conf*100).toFixed(0)+'%'
+            ).width + 8, 20);
+          ctx.fillStyle = '#fff';
+          ctx.fillText(
+            det.className+' '+
+            (det.conf*100).toFixed(0)+'%',
+            det.x1+4, det.y1-4
+          );
+        });
+      }
+
+      // 2. Banda de información en la parte inferior
+      const bandH = 36;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(0, H-bandH, W, bandH);
+      ctx.fillStyle = '#fff';
+      ctx.font = '12px monospace';
+
+      const info = [
+        event.speed?.toFixed(0)+'km/h',
+        event.severity||'—',
+        'Score:'+event.score?.toFixed(0),
+        event.gemini?.description
+          ? '"'+event.gemini.description.slice(0,40)+'"'
+          : ''
+      ].filter(Boolean).join('  ·  ');
+
+      ctx.fillText(info, 8, H-10);
+
+      // 3. Flecha de dirección de marcha
+      ctx.fillStyle = 'rgba(14,165,233,0.8)';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillText('↑', W-30, H-bandH-10);
+
+      canvas.toBlob(b => resolve(b||blob),
+        'image/jpeg', 0.90);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url); resolve(blob);
+    };
+    img.src = url;
+  });
+}
+
 function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   if(!S.lastPos)return;
   const pos=getBestPosition()||S.lastPos;
