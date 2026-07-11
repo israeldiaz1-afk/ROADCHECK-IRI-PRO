@@ -1007,6 +1007,101 @@ async function sharpenBlob(blob) {
   });
 }
 
+// ─ CLAHE — contraste adaptativo para IA y para humanos ──────
+function applyCLAHE(imageData, strength = 0.5) {
+  // Versión simplificada: ecualización por bloques 8x8
+  const data = imageData.data;
+  const W = imageData.width;
+  const H = imageData.height;
+  const BLOCK = 32; // tamaño del bloque de análisis
+
+  // Para cada bloque, calcular la ecualización local
+  for (let by = 0; by < H; by += BLOCK) {
+    for (let bx = 0; bx < W; bx += BLOCK) {
+      // Calcular histograma del bloque
+      const hist = new Array(256).fill(0);
+      const bw = Math.min(BLOCK, W - bx);
+      const bh = Math.min(BLOCK, H - by);
+      let count = 0;
+
+      for (let y = by; y < by+bh; y++) {
+        for (let x = bx; x < bx+bw; x++) {
+          const i = (y*W+x)*4;
+          const lum = Math.round(
+            0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]
+          );
+          hist[lum]++;
+          count++;
+        }
+      }
+
+      // Clip del histograma (la C de CLAHE)
+      const clipLimit = Math.max(1,
+        Math.round(strength * count / 128));
+      let excess = 0;
+      for (let i = 0; i < 256; i++) {
+        if (hist[i] > clipLimit) {
+          excess += hist[i] - clipLimit;
+          hist[i] = clipLimit;
+        }
+      }
+      // Redistribuir el exceso uniformemente
+      const redistrib = Math.floor(excess / 256);
+      for (let i = 0; i < 256; i++) hist[i] += redistrib;
+
+      // CDF para la transformación
+      const cdf = new Array(256).fill(0);
+      cdf[0] = hist[0];
+      for (let i = 1; i < 256; i++) cdf[i] = cdf[i-1] + hist[i];
+      const cdfMin = cdf.find(v => v > 0) || 1;
+
+      // Aplicar transformación al bloque
+      for (let y = by; y < by+bh; y++) {
+        for (let x = bx; x < bx+bw; x++) {
+          const i = (y*W+x)*4;
+          const lum = Math.round(
+            0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]
+          );
+          const newLum = Math.round(
+            (cdf[lum] - cdfMin) / (count - cdfMin) * 255
+          );
+          const factor = lum > 0 ? newLum / lum : 1;
+          data[i]   = Math.min(255, Math.round(data[i]   * factor));
+          data[i+1] = Math.min(255, Math.round(data[i+1] * factor));
+          data[i+2] = Math.min(255, Math.round(data[i+2] * factor));
+        }
+      }
+    }
+  }
+  return imageData;
+}
+
+// Aplicar CLAHE a un blob y devolver blob mejorado
+async function applyCLAHEToBlob(blob, strength = 0.5) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(
+        0, 0, img.width, img.height);
+      applyCLAHE(imageData, strength);
+      ctx.putImageData(imageData, 0, 0);
+      canvas.toBlob(b => resolve(b||blob),
+        'image/jpeg', 0.88);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url); resolve(blob);
+    };
+    img.src = url;
+  });
+}
+
 function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   if(!S.lastPos)return;
   const pos=getBestPosition()||S.lastPos;
