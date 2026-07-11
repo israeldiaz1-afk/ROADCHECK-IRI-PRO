@@ -585,12 +585,15 @@ function updateReferenceSpectrum(vert,speedKmh){
 function detectEvent(){
   if(S.urbanBuf.length<20)return;
   const latest=S.urbanBuf[S.urbanBuf.length-1];
-  const dynamicThreshold=S.noiseBaseline.mean+4*S.noiseBaseline.std; // 4-sigma
-  if(Math.abs(latest.vert)<Math.max(
-    dynamicThreshold,
-    URBAN_TUNABLE.triggerFloorMs2))return;
+  const thr=Math.max(S.noiseBaseline.mean+4*S.noiseBaseline.std, URBAN_TUNABLE.triggerFloorMs2);
+  if(Math.abs(latest.vert)<thr)return;
   if(S._lastEventTs&&latest.t-S._lastEventTs<300)return; // anti-rebote 300ms
-  extractFeaturesAndScore(latest.t);
+  if(S._pendingTrigger)return;           // ya hay una extracción programada
+  S._pendingTrigger=latest.t;
+  setTimeout(()=>{                        // esperar cola post-evento
+    extractFeaturesAndScore(S._pendingTrigger);
+    S._pendingTrigger=null;
+  },280);
 }
 
 function extractFeaturesAndScore(triggerTs){
@@ -1667,7 +1670,7 @@ async function startMeasurement(){
   S.lineMeas?.setLatLngs([]);
 
   if(S.activeModes.has('urban')){
-    S.urbanEvents=[];S.urbanBuf=[];S._lastEventTs=null;
+    S.urbanEvents=[];S.urbanBuf=[];S._lastEventTs=null;S._pendingTrigger=null;
     S.groundTruth=[];
     S.noiseBaseline={mean:0,std:0.05,samples:[]};
     S.noiseFilter={eventMask:false,eventMaskTs:0,percentile15:0,appliedPost:false,refBuf:[],refBufMax:600,refSpectrum:null};
