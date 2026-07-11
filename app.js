@@ -5023,9 +5023,10 @@ async function runAutoTests() {
 
   await test('calcFrameDelay nunca supera buffer', async () => {
     const d = calcFrameDelay(1);
+    const maxAllowed = VIDEO_BUF.maxAgeMs * 0.85;
     return {
-      ok: d <= 2550,
-      detail: `${d.toFixed(0)}ms <= 2550ms`
+      ok: d <= maxAllowed,
+      detail: `${d.toFixed(0)}ms <= ${maxAllowed.toFixed(0)}ms`
     };
   });
 
