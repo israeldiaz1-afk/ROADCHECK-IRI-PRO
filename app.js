@@ -839,41 +839,75 @@ function updateFusionWeights() {
   } catch(e) {}
 }
 
-// ─ Calidad de imagen — nitidez y sharpen ──────
-async function calcSharpness(blob) {
+// ─ Calidad de imagen — exposición, nitidez y sharpen ──────
+async function analyzeExposure(blob) {
   return new Promise(resolve => {
     const img = new Image();
     const url = URL.createObjectURL(blob);
     img.onload = () => {
       URL.revokeObjectURL(url);
       const canvas = document.createElement('canvas');
-      // Reducir para velocidad — 160x90 es suficiente
-      canvas.width = 160;
-      canvas.height = 90;
+      canvas.width = 80; canvas.height = 45; // tiny para velocidad
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, 160, 90);
-      const pixels = ctx.getImageData(0, 0, 160, 90).data;
+      ctx.drawImage(img, 0, 0, 80, 45);
+      const pixels = ctx.getImageData(0, 0, 80, 45).data;
 
-      // Convertir a escala de grises
+      let overexposed = 0, underexposed = 0, total = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const lum = 0.299*pixels[i] +
+                    0.587*pixels[i+1] +
+                    0.114*pixels[i+2];
+        if (lum > 240) overexposed++;
+        if (lum < 15)  underexposed++;
+        total++;
+      }
+
+      resolve({
+        overexposedRatio:  overexposed / total,
+        underexposedRatio: underexposed / total,
+        // true = imagen válida (bien expuesta)
+        valid: (overexposed/total < 0.15) &&
+               (underexposed/total < 0.20)
+      });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ valid: false });
+    };
+    img.src = url;
+  });
+}
+
+async function calcSharpness(blob) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const W = 160, H = 90;
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      // Usar solo la mitad inferior de la imagen
+      // (donde está el pavimento, no el cielo)
+      ctx.drawImage(img,
+        0, img.height/2,       // src: mitad inferior
+        img.width, img.height/2,
+        0, 0, W, H             // dst: canvas completo
+      );
+      const pixels = ctx.getImageData(0, 0, W, H).data;
       const gray = [];
       for (let i = 0; i < pixels.length; i += 4) {
         gray.push(0.299*pixels[i] +
                   0.587*pixels[i+1] +
                   0.114*pixels[i+2]);
       }
-
-      // Aplicar kernel Laplaciano 3x3
-      // [0,1,0],[1,-4,1],[0,1,0]
-      const W = 160, H = 90;
-      let variance = 0;
-      let count = 0;
+      let variance = 0, count = 0;
       for (let y = 1; y < H-1; y++) {
         for (let x = 1; x < W-1; x++) {
           const lap =
-            gray[(y-1)*W+x] +
-            gray[(y+1)*W+x] +
-            gray[y*W+(x-1)] +
-            gray[y*W+(x+1)] -
+            gray[(y-1)*W+x] + gray[(y+1)*W+x] +
+            gray[y*W+(x-1)] + gray[y*W+(x+1)] -
             4 * gray[y*W+x];
           variance += lap * lap;
           count++;
@@ -886,23 +920,46 @@ async function calcSharpness(blob) {
   });
 }
 
-// Función que selecciona el frame más nítido:
-async function selectSharpestFrame(frameBlobs) {
-  if (!frameBlobs || frameBlobs.length === 0)
-    return null;
-  if (frameBlobs.length === 1)
-    return frameBlobs[0];
+// Selector de frames con filtros combinados de exposición y nitidez
+async function selectBestFrames(frameBlobs) {
+  if (!frameBlobs || frameBlobs.length === 0) return [];
 
-  const sharpnesses = await Promise.all(
-    frameBlobs.map(f => calcSharpness(f.blob))
+  // Analizar todos los frames en paralelo
+  const analyses = await Promise.all(frameBlobs.map(async f => {
+    const [exposure, sharpness] = await Promise.all([
+      analyzeExposure(f.blob),
+      calcSharpness(f.blob)
+    ]);
+    return {
+      frame: f,
+      exposure,
+      sharpness,
+      // Score combinado: nitidez penalizada por mala exposición
+      score: exposure.valid ? sharpness : 0
+    };
+  }));
+
+  console.log('[Quality] Análisis frames:',
+    analyses.map(a =>
+      `${a.frame.label}: sharpness=${a.sharpness.toFixed(0)} ` +
+      `over=${(a.exposure.overexposedRatio*100).toFixed(0)}% ` +
+      `score=${a.score.toFixed(0)}`
+    ).join(' | ')
   );
-  console.log('[Sharpness]',
-    sharpnesses.map((s,i) =>
-      frameBlobs[i].label+':'+s.toFixed(1)).join(' '));
 
-  const bestIdx = sharpnesses.indexOf(
-    Math.max(...sharpnesses));
-  return frameBlobs[bestIdx];
+  // Ordenar por score descendente
+  const sorted = analyses
+    .filter(a => a.score > 0) // solo frames bien expuestos
+    .sort((a, b) => b.score - a.score);
+
+  // Si todos están sobreexpuestos, usar el menos malo
+  if (sorted.length === 0) {
+    console.log('[Quality] Todos sobreexpuestos — usando el más nítido');
+    return [analyses.sort((a,b) => b.sharpness-a.sharpness)[0].frame];
+  }
+
+  // Devolver top-3 bien expuestos
+  return sorted.slice(0, 3).map(a => a.frame);
 }
 
 async function sharpenBlob(blob) {
