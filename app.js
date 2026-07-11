@@ -1218,65 +1218,92 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   event._frameBlobs=frames;
   event._frameBlob=frames[1]?.blob||frames[0]?.blob;
 
-  // Procesado de calidad en background: seleccionar
-  // el frame más nítido, aplicar sharpen, y solo
-  // entonces invocar YOLO y Gemini sobre ese frame
   if (frames.length > 0) {
-    selectSharpestFrame(frames).then(async best => {
-      if (!best) return;
+    // Pipeline de calidad completo (asíncrono, no bloquea)
+    (async () => {
+      try {
+        // PASO 1: Seleccionar los mejores frames
+        // (filtra sobreexpuestos, elige más nítidos)
+        const bestFrames = await selectBestFrames(frames);
+        const bestFrame = bestFrames[0];
+        if (!bestFrame) return;
 
-      // Aplicar sharpen al mejor frame
-      const sharpened = await sharpenBlob(best.blob);
-      event._frameBlob = sharpened;
-      await saveImageBlob(event.id+'_best', sharpened);
-      console.log('[Quality] Mejor frame: ' +
-        best.label + ' sharpenado');
+        console.log('[Pipeline] Mejor frame: ' +
+          bestFrame.label);
 
-      // YOLO sobre el frame mejorado
-      if (YOLO_STATE.ready) {
-        runYOLO(sharpened).then(detections => {
-          event.yolo = { detections: detections||[] };
-          if (detections?.length > 0) {
-            const best = detections
-              .reduce((a,b) => a.conf>b.conf?a:b);
-            event.yolo.topClass = best.className;
-            event.yolo.topConf = best.conf;
-            event.yolo.confirmed = true;
-            event._scores.yolo = best.conf;
-          } else {
-            event.yolo.confirmed = false;
+        // PASO 2: Versión para IA — CLAHE suave
+        // (mejora contraste sin artefactos)
+        const frameForAI = await applyCLAHEToBlob(
+          bestFrame.blob, 0.3
+        );
+
+        // PASO 3: Versión para humano — CLAHE + sharpen + anotaciones
+        const frameCLAHE = await applyCLAHEToBlob(
+          bestFrame.blob, 0.6
+        );
+        const frameSharp = await sharpenBlob(frameCLAHE);
+
+        // Guardar versión IA en IndexedDB
+        await saveImageBlob(event.id+'_best_ia', frameForAI);
+
+        // PASO 4: YOLO sobre versión IA
+        if (YOLO_STATE.ready) {
+          runYOLO(frameForAI).then(async detections => {
+            event.yolo = { detections: detections||[] };
+            if (detections?.length > 0) {
+              const best = detections
+                .reduce((a,b) => a.conf>b.conf?a:b);
+              event.yolo.topClass = best.className;
+              event.yolo.topConf  = best.conf;
+              event.yolo.confirmed = true;
+              event._scores.yolo = best.conf;
+            } else {
+              event.yolo.confirmed = false;
+              event._scores.yolo = 0.2;
+            }
+            evaluateFusion(event);
+
+            // PASO 5: Anotar para humano (incluye YOLO boxes)
+            const frameHuman = await annotateFrameForHuman(
+              frameSharp, event
+            );
+            event._frameBlob = frameHuman;
+            await saveImageBlob(
+              event.id+'_best_human', frameHuman
+            );
+
+            queueUI('gallery_refresh', () => {
+              if (GAL.items.some(i=>i.event.id===event.id))
+                renderGalleryItem(GAL.idx);
+            });
+          }).catch(() => {
             event._scores.yolo = 0.2;
-          }
-          evaluateFusion(event);
-          queueUI('gallery_refresh', () => {
-            if (GAL.items.some(i=>i.event.id===event.id))
-              renderGalleryItem(GAL.idx);
+            evaluateFusion(event);
           });
-        }).catch(() => {
-          event._scores.yolo = 0.2;
-          evaluateFusion(event);
-        });
+        }
+
+        // PASO 6: Gemini sobre versión IA
+        analyzeEventWithGemini(event, frameForAI)
+          .then(result => {
+            if (!result) return;
+            event.gemini = result;
+            event.geminiConfirm = !result.discard;
+            if (result.discard)
+              event.geminiSuggestsDiscard = true;
+            event._scores.gemini = result.discard
+              ? Math.max(0, 1-(result.confidence||0.5))
+              : (result.confidence||0.5);
+            evaluateFusion(event);
+            queueUI('gallery_refresh', () => {
+              if (GAL.items.some(i=>i.event.id===event.id))
+                renderGalleryItem(GAL.idx);
+            });
+          });
+
+      } catch(e) {
+        console.error('[Pipeline] Error:', e.message);
       }
-
-      // Gemini sobre el frame mejorado
-      analyzeEventWithGemini(event, sharpened)
-        .then(result => {
-          if (!result) return;
-          event.gemini = result;
-          event.geminiConfirm = !result.discard;
-          if (result.discard)
-            event.geminiSuggestsDiscard = true;
-          event._scores.gemini = result.discard
-            ? Math.max(0, 1-(result.confidence||0.5))
-            : (result.confidence||0.5);
-          evaluateFusion(event);
-          queueUI('gallery_refresh', () => {
-            if (GAL.items.some(i=>i.event.id===event.id))
-              renderGalleryItem(GAL.idx);
-          });
-        });
-
-    });
+    })();
   }
 
   // Persistir cada frame en IndexedDB con su label como sufijo de clave
@@ -3583,8 +3610,6 @@ function updateAdaptiveCalUI(){
 // ─ Análisis Gemini (Fase 3) ───────────────────
 async function analyzeEventWithGemini(event,imageBlob){
   if(!imageBlob)return;
-  const bestBlob = await getImageBlob(event.id+'_best');
-  if (bestBlob) imageBlob = bestBlob;
   const base64=await new Promise(resolve=>{
     const reader=new FileReader();
     reader.onload=()=>resolve(reader.result.split(',')[1]);
@@ -4202,13 +4227,24 @@ function renderGalleryItem(idx){
 
   async function ensureFrames(ev){
     if(ev._frameBlobs?.length>0)return;
-    const[bA,bB,bC]=await getImageBlobs([
-      ev.id+'_A',ev.id+'_B',ev.id+'_C'
+
+    // Intentar recuperar frame anotado para humano primero
+    const bestHuman=await getImageBlob(ev.id+'_best_human');
+    if(bestHuman){
+      ev._frameBlobs=[{blob:bestHuman,label:'best',diff:0}];
+      return;
+    }
+
+    // Fallback a frames originales A/B/C/D/E
+    const blobs=await getImageBlobs([
+      ev.id+'_A',ev.id+'_B',ev.id+'_C',
+      ev.id+'_D',ev.id+'_E'
     ]);
     const fb=[];
-    if(bA)fb.push({blob:bA,label:'A',diff:0});
-    if(bB)fb.push({blob:bB,label:'B',diff:0});
-    if(bC)fb.push({blob:bC,label:'C',diff:0});
+    const labels=['A','B','C','D','E'];
+    blobs.forEach((b,i)=>{
+      if(b)fb.push({blob:b,label:labels[i],diff:0});
+    });
     ev._frameBlobs=fb;
   }
 
