@@ -69,6 +69,30 @@ const S={
   }
 };
 
+// ─ Fase 2: Simulador — flags de URL compartidos ────
+const _urlParams = new URLSearchParams(window.location.search);
+
+// ─ Fase 2 / S1: Grabación de sesiones reales (?record) ─
+// Vuelca cada muestra cruda de sensor/GPS durante una sesión activa a un
+// buffer exportable como JSON, reproducible después con el replay (?sim).
+const REC = { enabled: _urlParams.has('record'), active: false, samples: [], gps: [] };
+let _lastRawGyro = { x: 0, y: 0, z: 0 }; // última lectura de giroscopio SIN offset — es lo que espera onGyro() al reinyectarla
+
+function exportRecording() {
+  const data = {
+    calibration: {
+      grav: S.grav,
+      gravMag: S.gravMag,
+      noiseLevel: S.noiseLevel,
+      gyroOffset: S.gyroOffset
+    },
+    samples: REC.samples,
+    gps: REC.gps
+  };
+  dlBlob(JSON.stringify(data), 'application/json', 'rc_record_' + Date.now() + '.json');
+  toast('📼 Grabación exportada — ' + REC.samples.length + ' muestras, ' + REC.gps.length + ' GPS');
+}
+
 // ════════════════════════════════════════════════
 // PERSISTENCIA DE IMÁGENES — IndexedDB
 // ════════════════════════════════════════════════
@@ -413,6 +437,7 @@ function onGPS(pos){
   S.gpsHistory.push({lat,lon,ts:Date.now(),accuracy:acc});
   if(S.gpsHistory.length>10)S.gpsHistory.shift();
   const kmh=(spd!=null&&spd>0.42)?spd*3.6:0;
+  if(REC.active&&S.active)REC.gps.push({t:Date.now(),lat:rawLat,lon:rawLon,speed:kmh,accuracy:acc});
   const at='±'+acc.toFixed(0)+'m';
   setChip('cGPS','dGPS','lGPS',acc<=20?'ok':'warn',acc<=20?'#10B981':'#F59E0B','GPS '+at);
   if(!S.gpsReady){
@@ -505,6 +530,7 @@ function tryGyro() {
 }
 
 function onGyro(gx, gy, gz) {
+  _lastRawGyro.x = gx; _lastRawGyro.y = gy; _lastRawGyro.z = gz;
   S.gyro.x = gx - S.gyroOffset.x;
   S.gyro.y = gy - S.gyroOffset.y;
   S.gyro.z = gz - S.gyroOffset.z;
@@ -533,6 +559,7 @@ function onRaw(x,y,z){
   const g=S.grav;
   const raw=Math.abs(x*g.x+y*g.y+z*g.z-S.gravMag);
   if(S.active){
+    if(REC.active)REC.samples.push({t:Date.now(),x,y,z,gx:_lastRawGyro.x,gy:_lastRawGyro.y,gz:_lastRawGyro.z});
     if(S.activeModes.has('urban'))feedUrbanBuffer(x,y,z,Date.now());
     if(S.activeModes.has('comfort'))onComfortSample(x,y,z,Date.now());
     onVert(raw);
@@ -1658,6 +1685,10 @@ async function startMeasurement(){
   S.active=true;S.paused=false;S.dist=0;S._sessionStart=Date.now();S._recentUrbanEvent=false;
   S.adaptiveCal={active:false,gravBuf:[],gravBufMax:180,lastUpdate:0,updateCount:0,driftDeg:0,driftThresholdDeg:2.0,status:'idle',_stopStart:null};
   S._manualRecalRequest=false;
+  if(REC.enabled){
+    REC.active=true;REC.samples=[];REC.gps=[];
+    toast('🔴 Grabando sesión para replay (?record)');
+  }
   loadFusionWeights();
   S.buf=[];S.chartZ=[];S.chartI=[];S.hpPrev=0;S.hpPrevIn=0;
   EKG.buf.marks=[];EKG.buf.totalSamples=0;
@@ -1721,6 +1752,10 @@ function stopMeasurement(){
   releaseWakeLock();
   $('cameraSelectorModal')?.classList.add('hidden');
   S.active=false;
+  if(REC.active){
+    exportRecording();
+    REC.active=false;
+  }
   S.paused=false;stopTimer();$('meas-sc').classList.add('hidden');
   stopVideoBuffer();EKG.buf.marks=[];EKG.buf.totalSamples=0;
   const lblBtn=$('urbanLabelBtn');if(lblBtn)lblBtn.style.display='none';
@@ -5111,7 +5146,6 @@ async function runAutoTests() {
 }
 
 // Activar con ?test en la URL (mantener ?autotest por compatibilidad)
-const _urlParams = new URLSearchParams(window.location.search);
 if (_urlParams.has('test') || _urlParams.has('autotest')) {
   window.addEventListener('load', () => setTimeout(runAutoTests, 1500));
 }
