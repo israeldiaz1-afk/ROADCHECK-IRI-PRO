@@ -4644,6 +4644,12 @@ function openTypeCorrector(){
 function correctEventType(type){
   const item=GAL.items[GAL.idx];if(!item)return;
   item.event.type=type;item.event.humanLabel='corrected';item.event.humanTs=Date.now();
+  for (let i = S.fusion.history.length - 1; i >= 0; i--) {
+    if (S.fusion.history[i].eventId === item.event.id) {
+      S.fusion.history[i].humanLabel = 'corrected';
+      break;
+    }
+  }
   $('typeCorrectorModal').classList.add('hidden');
   renderGalleryItem(GAL.idx);
   saveToTrainingDataset(item.event,item.event._frameBlob,'corrected');
