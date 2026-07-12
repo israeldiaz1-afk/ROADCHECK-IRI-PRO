@@ -4367,13 +4367,23 @@ async function continueValidation(routeId){
   const events=route.urbanData.events||[];
 
   GAL.items=await Promise.all(events.map(async(event)=>{
-    const[blobA,blobB,blobC]=await getImageBlobs([
-      event.id+'_A',event.id+'_B',event.id+'_C'
-    ]);
-    const frameBlobs=[];
-    if(blobA)frameBlobs.push({blob:blobA,label:'A',diff:0});
-    if(blobB)frameBlobs.push({blob:blobB,label:'B',diff:0});
-    if(blobC)frameBlobs.push({blob:blobC,label:'C',diff:0});
+    // Preferir el frame anotado para humano; si no existe, recuperar
+    // hasta 5 frames originales A-E (antes limitado a A-C)
+    const bestHuman=await getImageBlob(event.id+'_best_human');
+    let frameBlobs;
+    if(bestHuman){
+      frameBlobs=[{blob:bestHuman,label:'best',diff:0}];
+    }else{
+      const blobs=await getImageBlobs([
+        event.id+'_A',event.id+'_B',event.id+'_C',
+        event.id+'_D',event.id+'_E'
+      ]);
+      const labels=['A','B','C','D','E'];
+      frameBlobs=[];
+      blobs.forEach((b,i)=>{
+        if(b)frameBlobs.push({blob:b,label:labels[i],diff:0});
+      });
+    }
     return{event:{...event,_frameBlobs:frameBlobs}};
   }));
 
