@@ -4640,11 +4640,17 @@ function selectGalleryFrame(fi){
   document.querySelectorAll('.gal-thumb').forEach((el,i)=>el.classList.toggle('active',i===fi));
   loadFrameToCanvas(frames[fi].blob,frames[fi].label);
 }
-function loadFrameToCanvas(blob,label){
+function loadFrameToCanvas(blob,label,retryCount=0){
   if(!blob){
     console.log('[Gallery] loadFrameToCanvas: blob null');
     return;
   }
+  if(retryCount>30){
+    console.log('[Gallery] loadFrameToCanvas: abortado tras 30 reintentos');
+    return;
+  }
+  const modal=$('eventGalleryModal');
+  if(modal?.classList.contains('hidden'))return; // modal cerrado mientras cargaba
   const canvas=$('galCanvas');
   const wrap=$('galImageWrap');
   if(!canvas||!wrap){
@@ -4665,7 +4671,7 @@ function loadFrameToCanvas(blob,label){
       // El wrap no tiene dimensiones todavía —
       // reintentar después de un frame
       requestAnimationFrame(()=>
-        loadFrameToCanvas(blob,label));
+        loadFrameToCanvas(blob,label,retryCount+1));
       return;
     }
     const imgRatio=GAL.img.width/GAL.img.height;
