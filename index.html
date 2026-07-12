@@ -18,8 +18,8 @@
   --sky:#0EA5E9;--sky-a:rgba(14,165,233,.13);--sky-b:rgba(14,165,233,.25);
   --amber:#F59E0B;--amb-a:rgba(245,158,11,.11);
   --good:#10B981;--fair:#F59E0B;--bad:#EF4444;
-  --txt:#B8D0E4;--dim:#3A5F7A;--mid:#5A7E9C;
-  --ln:rgba(14,165,233,.10);--ln2:rgba(14,165,233,.24);
+  --txt:#D3E5F5;--dim:#7C9CB8;--mid:#5A7E9C;
+  --ln:rgba(14,165,233,.10);--ln2:rgba(14,165,233,.38);
   --mono:'JetBrains Mono',monospace;--ui:'Space Grotesk',system-ui,sans-serif;
   --tab-h:52px;
   --safe-t:env(safe-area-inset-top,0px);--safe-b:env(safe-area-inset-bottom,0px);
@@ -32,6 +32,15 @@
   --fs-xl:1.55rem;
   --fs-xxl:2.10rem;
   --tap-min:44px;
+  /* Modo alto contraste opcional para exterior — toggle en el historial */
+  --dim-hc:#A8C4DC;
+  --txt-hc:#FFFFFF;
+  --s1-hc:#0D2440;
+}
+body.high-contrast{
+  --dim: var(--dim-hc);
+  --txt: var(--txt-hc);
+  --s1: var(--s1-hc);
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui);color:var(--txt)}
@@ -560,6 +569,14 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
                  style="display:none"
                  onchange="importFullDataset(this.files[0])">
         </label>
+      </div>
+      <div style="margin-top:8px">
+        <button onclick="document.body.classList.toggle('high-contrast');
+          localStorage.setItem('rc_high_contrast',
+          document.body.classList.contains('high-contrast'))"
+          class="btn btn-sec" style="font-size:.72rem">
+          ☀️ Modo exterior
+        </button>
       </div>
       <div id="histList" style="display:flex;flex-direction:column;gap:5px;flex:1">
         <div class="empty-st"><div class="empty-ico">🛣️</div><p class="empty-txt">Sin rutas guardadas.<br>Inicia una medición para comenzar.</p>
