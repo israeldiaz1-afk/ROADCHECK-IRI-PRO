@@ -1198,68 +1198,87 @@ async function sharpenBlob(blob) {
 
 // ─ CLAHE — contraste adaptativo para IA y para humanos ──────
 function applyCLAHE(imageData, strength = 0.5) {
-  // Versión simplificada: ecualización por bloques 8x8
   const data = imageData.data;
   const W = imageData.width;
   const H = imageData.height;
-  const BLOCK = 32; // tamaño del bloque de análisis
+  const BLOCK = 32;
+  const nBlocksX = Math.ceil(W / BLOCK);
+  const nBlocksY = Math.ceil(H / BLOCK);
 
-  // Para cada bloque, calcular la ecualización local
-  for (let by = 0; by < H; by += BLOCK) {
-    for (let bx = 0; bx < W; bx += BLOCK) {
-      // Calcular histograma del bloque
+  // PASO 1: calcular CDF de cada bloque de la grilla
+  // (guardamos todos los CDFs antes de aplicar nada)
+  const cdfGrid = [];
+  for (let by = 0; by < nBlocksY; by++) {
+    cdfGrid[by] = [];
+    for (let bx = 0; bx < nBlocksX; bx++) {
+      const x0 = bx*BLOCK, y0 = by*BLOCK;
+      const bw = Math.min(BLOCK, W-x0);
+      const bh = Math.min(BLOCK, H-y0);
       const hist = new Array(256).fill(0);
-      const bw = Math.min(BLOCK, W - bx);
-      const bh = Math.min(BLOCK, H - by);
       let count = 0;
-
-      for (let y = by; y < by+bh; y++) {
-        for (let x = bx; x < bx+bw; x++) {
+      for (let y = y0; y < y0+bh; y++) {
+        for (let x = x0; x < x0+bw; x++) {
           const i = (y*W+x)*4;
           const lum = Math.round(
-            0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]
-          );
-          hist[lum]++;
-          count++;
+            0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]);
+          hist[lum]++; count++;
         }
       }
-
-      // Clip del histograma (la C de CLAHE)
       const clipLimit = Math.max(1,
         Math.round(strength * count / 128));
       let excess = 0;
-      for (let i = 0; i < 256; i++) {
-        if (hist[i] > clipLimit) {
-          excess += hist[i] - clipLimit;
-          hist[i] = clipLimit;
-        }
+      for (let i=0;i<256;i++){
+        if(hist[i]>clipLimit){excess+=hist[i]-clipLimit;hist[i]=clipLimit;}
       }
-      // Redistribuir el exceso uniformemente
-      const redistrib = Math.floor(excess / 256);
-      for (let i = 0; i < 256; i++) hist[i] += redistrib;
-
-      // CDF para la transformación
+      const redistrib = Math.floor(excess/256);
+      for (let i=0;i<256;i++) hist[i]+=redistrib;
       const cdf = new Array(256).fill(0);
-      cdf[0] = hist[0];
-      for (let i = 1; i < 256; i++) cdf[i] = cdf[i-1] + hist[i];
-      const cdfMin = cdf.find(v => v > 0) || 1;
+      cdf[0]=hist[0];
+      for (let i=1;i<256;i++) cdf[i]=cdf[i-1]+hist[i];
+      const cdfMin = cdf.find(v=>v>0)||1;
+      cdfGrid[by][bx] = {cdf, cdfMin, count};
+    }
+  }
 
-      // Aplicar transformación al bloque
-      for (let y = by; y < by+bh; y++) {
-        for (let x = bx; x < bx+bw; x++) {
-          const i = (y*W+x)*4;
-          const lum = Math.round(
-            0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]
-          );
-          const newLum = Math.round(
-            (cdf[lum] - cdfMin) / (count - cdfMin) * 255
-          );
-          const factor = lum > 0 ? newLum / lum : 1;
-          data[i]   = Math.min(255, Math.round(data[i]   * factor));
-          data[i+1] = Math.min(255, Math.round(data[i+1] * factor));
-          data[i+2] = Math.min(255, Math.round(data[i+2] * factor));
-        }
-      }
+  // PASO 2: aplicar transformación por PÍXEL con
+  // interpolación bilineal entre los 4 bloques
+  // (centros de bloque) más cercanos
+  for (let y = 0; y < H; y++) {
+    // Posición del píxel relativa a centros de bloque
+    const fy = (y - BLOCK/2) / BLOCK;
+    const by0 = Math.max(0, Math.min(nBlocksY-1, Math.floor(fy)));
+    const by1 = Math.min(nBlocksY-1, by0+1);
+    const wy = Math.max(0, Math.min(1, fy - by0));
+
+    for (let x = 0; x < W; x++) {
+      const fx = (x - BLOCK/2) / BLOCK;
+      const bx0 = Math.max(0, Math.min(nBlocksX-1, Math.floor(fx)));
+      const bx1 = Math.min(nBlocksX-1, bx0+1);
+      const wx = Math.max(0, Math.min(1, fx - bx0));
+
+      const i = (y*W+x)*4;
+      const lum = Math.round(
+        0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]);
+
+      // Transformar lum con cada uno de los 4 CDFs vecinos
+      const transform = (cell) => {
+        const {cdf, cdfMin, count} = cell;
+        return (cdf[lum]-cdfMin)/(Math.max(1,count-cdfMin))*255;
+      };
+      const v00 = transform(cdfGrid[by0][bx0]);
+      const v10 = transform(cdfGrid[by0][bx1]);
+      const v01 = transform(cdfGrid[by1][bx0]);
+      const v11 = transform(cdfGrid[by1][bx1]);
+
+      // Interpolación bilineal
+      const newLum =
+        v00*(1-wx)*(1-wy) + v10*wx*(1-wy) +
+        v01*(1-wx)*wy     + v11*wx*wy;
+
+      const factor = lum > 0 ? newLum/lum : 1;
+      data[i]   = Math.min(255, Math.round(data[i]  *factor));
+      data[i+1] = Math.min(255, Math.round(data[i+1]*factor));
+      data[i+2] = Math.min(255, Math.round(data[i+2]*factor));
     }
   }
   return imageData;
@@ -4495,14 +4514,7 @@ function renderGalleryItem(idx){
   async function ensureFrames(ev){
     if(ev._frameBlobs?.length>0)return;
 
-    // Intentar recuperar frame anotado para humano primero
-    const bestHuman=await getImageBlob(ev.id+'_best_human');
-    if(bestHuman){
-      ev._frameBlobs=[{blob:bestHuman,label:'best',diff:0}];
-      return;
-    }
-
-    // Fallback a frames originales A/B/C/D/E
+    // Recuperar los 5 frames originales A-E
     const blobs=await getImageBlobs([
       ev.id+'_A',ev.id+'_B',ev.id+'_C',
       ev.id+'_D',ev.id+'_E'
@@ -4512,6 +4524,14 @@ function renderGalleryItem(idx){
     blobs.forEach((b,i)=>{
       if(b)fb.push({blob:b,label:labels[i],diff:0});
     });
+
+    // Añadir el frame "best" anotado como opción
+    // adicional al final, no como sustituto
+    const bestHuman=await getImageBlob(ev.id+'_best_human');
+    if(bestHuman){
+      fb.push({blob:bestHuman,label:'★ Mejor',diff:0});
+    }
+
     ev._frameBlobs=fb;
   }
 
