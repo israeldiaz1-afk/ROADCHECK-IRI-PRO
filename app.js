@@ -4390,23 +4390,24 @@ async function continueValidation(routeId){
   const events=route.urbanData.events||[];
 
   GAL.items=await Promise.all(events.map(async(event)=>{
-    // Preferir el frame anotado para humano; si no existe, recuperar
-    // hasta 5 frames originales A-E (antes limitado a A-C)
+    // Recuperar los 5 frames originales A-E
+    const blobs=await getImageBlobs([
+      event.id+'_A',event.id+'_B',event.id+'_C',
+      event.id+'_D',event.id+'_E'
+    ]);
+    const labels=['A','B','C','D','E'];
+    const frameBlobs=[];
+    blobs.forEach((b,i)=>{
+      if(b)frameBlobs.push({blob:b,label:labels[i],diff:0});
+    });
+
+    // Añadir el frame "best" anotado como opción
+    // adicional al final, no como sustituto
     const bestHuman=await getImageBlob(event.id+'_best_human');
-    let frameBlobs;
     if(bestHuman){
-      frameBlobs=[{blob:bestHuman,label:'best',diff:0}];
-    }else{
-      const blobs=await getImageBlobs([
-        event.id+'_A',event.id+'_B',event.id+'_C',
-        event.id+'_D',event.id+'_E'
-      ]);
-      const labels=['A','B','C','D','E'];
-      frameBlobs=[];
-      blobs.forEach((b,i)=>{
-        if(b)frameBlobs.push({blob:b,label:labels[i],diff:0});
-      });
+      frameBlobs.push({blob:bestHuman,label:'★ Mejor',diff:0});
     }
+
     return{event:{...event,_frameBlobs:frameBlobs}};
   }));
 
