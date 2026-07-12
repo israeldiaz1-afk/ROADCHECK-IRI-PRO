@@ -25,12 +25,12 @@
   --safe-t:env(safe-area-inset-top,0px);--safe-b:env(safe-area-inset-bottom,0px);
   --r4:4px;--r8:8px;--r12:12px;
   /* Escala tipográfica para legibilidad en campo */
-  --fs-xs:0.72rem;
-  --fs-sm:0.82rem;
-  --fs-md:0.95rem;
-  --fs-lg:1.15rem;
-  --fs-xl:1.55rem;
-  --fs-xxl:2.10rem;
+  --fs-xs:0.80rem;
+  --fs-sm:0.90rem;
+  --fs-md:1.02rem;
+  --fs-lg:1.22rem;
+  --fs-xl:1.62rem;
+  --fs-xxl:2.20rem;
   --tap-min:44px;
   /* Modo nocturno opcional (paleta oscura original) — toggle en el historial */
   --ink-night:#05111F;
@@ -77,6 +77,7 @@ body.night-mode {
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui);color:var(--txt)}
+body{font-weight:450}
 
 /* ── APP SHELL ── */
 .app{display:flex;flex-direction:column;height:100%;max-width:480px;margin:0 auto;padding-top:var(--safe-t);background:var(--ink)}
