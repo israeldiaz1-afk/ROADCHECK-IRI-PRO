@@ -4513,9 +4513,25 @@ function renderGalleryItem(idx){
     isTouchDevice()?'none':'block';
 
   async function ensureFrames(ev){
-    if(ev._frameBlobs?.length>0)return;
+    // Si ya tiene frames en memoria Y ya
+    // incluye el frame best, no hacer nada
+    const alreadyHasBest = ev._frameBlobs?.some(
+      f => f.label === '★ Mejor'
+    );
+    if(ev._frameBlobs?.length>0 && alreadyHasBest) return;
 
-    // Recuperar los 5 frames originales A-E
+    // Si tiene frames en memoria pero SIN el best,
+    // solo comprobar si el best ya está disponible
+    // en IndexedDB y añadirlo
+    if(ev._frameBlobs?.length>0){
+      const bestHuman=await getImageBlob(ev.id+'_best_human');
+      if(bestHuman){
+        ev._frameBlobs.push({blob:bestHuman,label:'★ Mejor',diff:0});
+      }
+      return;
+    }
+
+    // Sin frames en memoria — recuperar todo de IndexedDB
     const blobs=await getImageBlobs([
       ev.id+'_A',ev.id+'_B',ev.id+'_C',
       ev.id+'_D',ev.id+'_E'
@@ -4526,8 +4542,6 @@ function renderGalleryItem(idx){
       if(b)fb.push({blob:b,label:labels[i],diff:0});
     });
 
-    // Añadir el frame "best" anotado como opción
-    // adicional al final, no como sustituto
     const bestHuman=await getImageBlob(ev.id+'_best_human');
     if(bestHuman){
       fb.push({blob:bestHuman,label:'★ Mejor',diff:0});
