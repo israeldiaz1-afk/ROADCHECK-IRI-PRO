@@ -1004,8 +1004,8 @@ function evaluateFusion(event) {
   console.log('[Fusión] score=' + score.toFixed(3) +
     ' confirmed=' + event.fusionConfirmed);
 
-  setEventFeedbackStage('fusion');
-  setTimeout(() => setEventFeedbackStage('done'), 300);
+  setEventFeedbackStage('fusion', event.id);
+  setTimeout(() => setEventFeedbackStage('done', event.id), 300);
 }
 
 function updateFusionWeights() {
@@ -1416,30 +1416,39 @@ async function annotateAndSaveHuman(event, frameSharp) {
 const EVENT_FEEDBACK = {
   active: false,
   startTs: 0,
-  stage: null, // 'trigger' | 'yolo' | 'gemini' | 'fusion' | 'done'
+  stage: null,
+  eventId: null,
 };
 
-function triggerEventFeedback() {
+function triggerEventFeedback(eventId) {
   EVENT_FEEDBACK.active = true;
   EVENT_FEEDBACK.startTs = Date.now();
   EVENT_FEEDBACK.stage = 'trigger';
-  if (typeof updateEventFeedbackUI === 'function') updateEventFeedbackUI();
+  EVENT_FEEDBACK.eventId = eventId;
+  updateEventFeedbackUI();
 
   clearTimeout(EVENT_FEEDBACK._timeout);
   EVENT_FEEDBACK._timeout = setTimeout(() => {
-    EVENT_FEEDBACK.active = false;
-    if (typeof updateEventFeedbackUI === 'function') updateEventFeedbackUI();
+    if (EVENT_FEEDBACK.eventId === eventId) {
+      EVENT_FEEDBACK.active = false;
+      updateEventFeedbackUI();
+    }
   }, 4000);
 }
 
-function setEventFeedbackStage(stage) {
+function setEventFeedbackStage(stage, eventId) {
+  // Solo actualizar si el evento sigue siendo
+  // el que está mostrándose activamente
   if (!EVENT_FEEDBACK.active) return;
+  if (EVENT_FEEDBACK.eventId !== eventId) return;
   EVENT_FEEDBACK.stage = stage;
-  if (typeof updateEventFeedbackUI === 'function') updateEventFeedbackUI();
+  updateEventFeedbackUI();
   if (stage === 'done') {
     setTimeout(() => {
-      EVENT_FEEDBACK.active = false;
-      if (typeof updateEventFeedbackUI === 'function') updateEventFeedbackUI();
+      if (EVENT_FEEDBACK.eventId === eventId) {
+        EVENT_FEEDBACK.active = false;
+        updateEventFeedbackUI();
+      }
     }, 1200);
   }
 }
@@ -1481,7 +1490,6 @@ function updateEventFeedbackUI() {
 }
 
 function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
-  triggerEventFeedback();
   if(!S.lastPos)return;
   const pos=getBestPosition()||S.lastPos;
   const event={
@@ -1492,6 +1500,7 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
     waveform:waveform||[],
     confirmed:false,confirmCount:1
   };
+  triggerEventFeedback(event.id);
   S.noiseFilter.eventMask=true;S.noiseFilter.eventMaskTs=Date.now();
   S.urbanEvents.push(event);
 
@@ -1549,7 +1558,7 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
         // anotación del PASO 5, que se genera igual aunque YOLO no esté
         // disponible todavía o falle
         if (YOLO_STATE.ready) {
-          setEventFeedbackStage('yolo');
+          setEventFeedbackStage('yolo', event.id);
           runYOLO(frameForAI).then(async detections => {
             event.yolo = { detections: detections||[] };
             if (detections?.length > 0) {
@@ -1581,7 +1590,7 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
         await annotateAndSaveHuman(event, frameSharp);
 
         // PASO 6: Gemini sobre versión IA
-        setEventFeedbackStage('gemini');
+        setEventFeedbackStage('gemini', event.id);
         analyzeEventWithGemini(event, frameForAI)
           .then(result => {
             if (!result) return;
