@@ -1003,9 +1003,6 @@ function evaluateFusion(event) {
 
   console.log('[Fusión] score=' + score.toFixed(3) +
     ' confirmed=' + event.fusionConfirmed);
-
-  setEventFeedbackStage('fusion', event.id);
-  setTimeout(() => setEventFeedbackStage('done', event.id), 300);
 }
 
 function updateFusionWeights() {
@@ -1412,81 +1409,29 @@ async function annotateAndSaveHuman(event, frameSharp) {
   });
 }
 
-// ─ Fase V5J / Fase 1: estado compartido de progreso de detección ──
+// ─ Feedback de detección: flash de pantalla + resplandor sincronizado
+// en updateAccelViz()/updateGyroViz() (leen EVENT_FEEDBACK.active/.startTs) ──
 const EVENT_FEEDBACK = {
   active: false,
   startTs: 0,
-  stage: null,
-  eventId: null,
 };
 
-function triggerEventFeedback(eventId) {
+function triggerEventFeedback() {
   EVENT_FEEDBACK.active = true;
   EVENT_FEEDBACK.startTs = Date.now();
-  EVENT_FEEDBACK.stage = 'trigger';
-  EVENT_FEEDBACK.eventId = eventId;
-  updateEventFeedbackUI();
-
+  const flash = $('efFlash');
+  if (flash) {
+    flash.classList.remove('flashing');
+    void flash.offsetWidth;
+    flash.classList.add('flashing');
+  }
+  // Apagar el resplandor tras 800ms —
+  // mismo tiempo que usan updateAccelViz/
+  // updateGyroViz para el glow
   clearTimeout(EVENT_FEEDBACK._timeout);
   EVENT_FEEDBACK._timeout = setTimeout(() => {
-    if (EVENT_FEEDBACK.eventId === eventId) {
-      EVENT_FEEDBACK.active = false;
-      updateEventFeedbackUI();
-    }
-  }, 4000);
-}
-
-function setEventFeedbackStage(stage, eventId) {
-  // Solo actualizar si el evento sigue siendo
-  // el que está mostrándose activamente
-  if (!EVENT_FEEDBACK.active) return;
-  if (EVENT_FEEDBACK.eventId !== eventId) return;
-  EVENT_FEEDBACK.stage = stage;
-  updateEventFeedbackUI();
-  if (stage === 'done') {
-    setTimeout(() => {
-      if (EVENT_FEEDBACK.eventId === eventId) {
-        EVENT_FEEDBACK.active = false;
-        updateEventFeedbackUI();
-      }
-    }, 1200);
-  }
-}
-
-// ─ Fase V5J / Fase 2: indicador visual de progreso ──
-function updateEventFeedbackUI() {
-  const el = $('eventFeedback');
-  if (!el) return;
-
-  if (!EVENT_FEEDBACK.active) {
-    el.classList.add('hidden');
-    return;
-  }
-
-  el.classList.remove('hidden');
-
-  if (EVENT_FEEDBACK.stage === 'trigger') {
-    const flash = $('efFlash');
-    if (flash) {
-      flash.classList.remove('flashing');
-      void flash.offsetWidth;
-      flash.classList.add('flashing');
-    }
-  }
-
-  const stages = ['trigger','yolo','gemini','fusion'];
-  const currentIdx = stages.indexOf(EVENT_FEEDBACK.stage);
-
-  stages.forEach((s, i) => {
-    const stageEl = $('efStage' + s.charAt(0).toUpperCase() + s.slice(1));
-    if (!stageEl) return;
-    stageEl.classList.remove('active','done');
-    if (i < currentIdx || EVENT_FEEDBACK.stage === 'done') {
-      stageEl.classList.add('done');
-    } else if (i === currentIdx) {
-      stageEl.classList.add('active');
-    }
-  });
+    EVENT_FEEDBACK.active = false;
+  }, 800);
 }
 
 function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
@@ -1500,7 +1445,7 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
     waveform:waveform||[],
     confirmed:false,confirmCount:1
   };
-  triggerEventFeedback(event.id);
+  triggerEventFeedback();
   S.noiseFilter.eventMask=true;S.noiseFilter.eventMaskTs=Date.now();
   S.urbanEvents.push(event);
 
@@ -1558,7 +1503,6 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
         // anotación del PASO 5, que se genera igual aunque YOLO no esté
         // disponible todavía o falle
         if (YOLO_STATE.ready) {
-          setEventFeedbackStage('yolo', event.id);
           runYOLO(frameForAI).then(async detections => {
             event.yolo = { detections: detections||[] };
             if (detections?.length > 0) {
@@ -1590,7 +1534,6 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
         await annotateAndSaveHuman(event, frameSharp);
 
         // PASO 6: Gemini sobre versión IA
-        setEventFeedbackStage('gemini', event.id);
         analyzeEventWithGemini(event, frameForAI)
           .then(result => {
             if (!result) return;
