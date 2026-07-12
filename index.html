@@ -477,6 +477,66 @@ body{font-weight:450}
 .type-btn{padding:12px 8px;border:1px solid rgba(14,165,233,.2);border-radius:8px;background:var(--s2);color:var(--txt);font-size:var(--fs-sm);cursor:pointer;text-align:center}
 .type-btn:active{background:rgba(14,165,233,.15)}
 
+/* ── EVENT FEEDBACK (V5J Fase 2) ── */
+.event-feedback {
+  position: fixed;
+  top: calc(var(--safe-t) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 500;
+  background: var(--s1);
+  border: 1px solid var(--sky);
+  border-radius: 12px;
+  padding: 8px 16px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  transition: opacity .2s, transform .2s;
+}
+.event-feedback.hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-10px);
+  pointer-events: none;
+}
+.ef-stages {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ef-stage {
+  font-size: 1.1rem;
+  opacity: .25;
+  filter: grayscale(1);
+  transition: opacity .25s, filter .25s, transform .25s;
+}
+.ef-stage.active {
+  opacity: 1;
+  filter: grayscale(0);
+  transform: scale(1.25);
+}
+.ef-stage.done {
+  opacity: .7;
+  filter: grayscale(0);
+  transform: scale(1);
+}
+.ef-arrow {
+  color: var(--dim);
+  font-size: .75rem;
+}
+.ef-flash {
+  position: fixed;
+  inset: 0;
+  background: var(--sky);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 499;
+}
+.ef-flash.flashing {
+  animation: efFlashAnim .35s ease-out;
+}
+@keyframes efFlashAnim {
+  0%   { opacity: .25; }
+  100% { opacity: 0; }
+}
+
 /* ── ACCEL VIZ JOYSTICK + Z-BAR ── */
 .accel-viz{display:flex;gap:10px;padding:6px 10px;background:var(--s2);border-radius:var(--r8);flex:1;min-height:0;align-items:stretch;}
 .av-joystick{display:flex;flex-direction:column;align-items:center;flex:1;gap:3px;}
@@ -799,6 +859,18 @@ body{font-weight:450}
   <div class="m-map">
     <div id="mapMeas"></div>
     <button class="btn-map-center" style="top:12px;right:12px;bottom:auto;left:auto" onclick="centerMapOnMe('meas')" title="Centrar en mi posición">⊕</button>
+  </div>
+  <div class="event-feedback hidden" id="eventFeedback">
+    <div class="ef-flash" id="efFlash"></div>
+    <div class="ef-stages">
+      <div class="ef-stage" id="efStageTrigger">📳</div>
+      <div class="ef-arrow">→</div>
+      <div class="ef-stage" id="efStageYolo">🎯</div>
+      <div class="ef-arrow">→</div>
+      <div class="ef-stage" id="efStageGemini">🤖</div>
+      <div class="ef-arrow">→</div>
+      <div class="ef-stage" id="efStageFusion">⚖️</div>
+    </div>
   </div>
   <div class="accel-viz" id="accelViz">
     <div class="av-joystick">

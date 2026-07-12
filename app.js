@@ -1434,6 +1434,42 @@ function setEventFeedbackStage(stage) {
   }
 }
 
+// ─ Fase V5J / Fase 2: indicador visual de progreso ──
+function updateEventFeedbackUI() {
+  const el = $('eventFeedback');
+  if (!el) return;
+
+  if (!EVENT_FEEDBACK.active) {
+    el.classList.add('hidden');
+    return;
+  }
+
+  el.classList.remove('hidden');
+
+  if (EVENT_FEEDBACK.stage === 'trigger') {
+    const flash = $('efFlash');
+    if (flash) {
+      flash.classList.remove('flashing');
+      void flash.offsetWidth;
+      flash.classList.add('flashing');
+    }
+  }
+
+  const stages = ['trigger','yolo','gemini','fusion'];
+  const currentIdx = stages.indexOf(EVENT_FEEDBACK.stage);
+
+  stages.forEach((s, i) => {
+    const stageEl = $('efStage' + s.charAt(0).toUpperCase() + s.slice(1));
+    if (!stageEl) return;
+    stageEl.classList.remove('active','done');
+    if (i < currentIdx || EVENT_FEEDBACK.stage === 'done') {
+      stageEl.classList.add('done');
+    } else if (i === currentIdx) {
+      stageEl.classList.add('active');
+    }
+  });
+}
+
 function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   triggerEventFeedback();
   if(!S.lastPos)return;
