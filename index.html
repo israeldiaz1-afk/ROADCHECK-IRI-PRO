@@ -556,6 +556,18 @@ body{font-weight:450}
 .av-zfill.bad{background:#EF4444;}
 @keyframes zEventFlash{0%{opacity:1;filter:brightness(2);}100%{opacity:1;filter:brightness(1);}}
 .av-zfill.event{animation:zEventFlash .7s ease-out;}
+.av-dot.event-glow {
+  box-shadow: 0 0 16px 6px var(--sky);
+  animation: eventPulse .4s ease-out;
+}
+.av-zfill.event-glow {
+  box-shadow: 0 0 12px 4px var(--sky);
+}
+@keyframes eventPulse {
+  0%   { transform: translate(-50%,-50%) scale(1); }
+  50%  { transform: translate(-50%,-50%) scale(1.6); }
+  100% { transform: translate(-50%,-50%) scale(1); }
+}
 .av-zcenter{position:absolute;top:50%;left:0;right:0;height:2px;background:rgba(14,165,233,.25);transform:translateY(-50%);}
 .av-zval{font-size:.62rem;color:var(--dim);font-family:var(--mono);}
 .av-gyro-wrap{

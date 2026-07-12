@@ -3726,16 +3726,33 @@ function updateAccelViz(ax,ay,az){
   dot.style.left=(50+pctX)+'%';
   dot.style.top=(50+pctY)+'%';
   const magXY=Math.sqrt(projX*projX+projY*projY);
+
+  const eventGlow = EVENT_FEEDBACK.active &&
+    (Date.now() - EVENT_FEEDBACK.startTs) < 800;
+
   if(!dot.classList.contains('event')){
-    dot.className='av-dot'+(magXY>2?' bad':magXY>1?' warn':'');
+    dot.className='av-dot'+
+      (magXY>2?' bad':magXY>1?' warn':'')+
+      (eventGlow?' event-glow':'');
   }
   const MAX_Z=6;
   const pctZ=Math.max(0,Math.min(50,Math.abs(vertRaw)/MAX_Z*50));
   zFill.style.height=pctZ+'%';
   if(!zFill.classList.contains('event')){
-    zFill.className='av-zfill'+(Math.abs(vertRaw)>3?' bad':Math.abs(vertRaw)>1.5?' warn':'');
+    zFill.className='av-zfill'+
+      (Math.abs(vertRaw)>3?' bad':Math.abs(vertRaw)>1.5?' warn':'')+
+      (eventGlow?' event-glow':'');
   }
   if(zVal)zVal.textContent=vertRaw.toFixed(2);
+
+  // Trail del joystick (ver Fase 4)
+  if (typeof AV_TRAIL !== 'undefined') {
+    AV_TRAIL.points.push({ x: pctX, y: pctY, t: Date.now() });
+    if (AV_TRAIL.points.length > AV_TRAIL.maxPoints) {
+      AV_TRAIL.points.shift();
+    }
+    if (typeof renderAccelTrail === 'function') renderAccelTrail();
+  }
 }
 function drawArrow(ctx,x1,y1,x2,y2,color,magnitude){
   const angle=Math.atan2(y2-y1,x2-x1);
@@ -3763,6 +3780,16 @@ function updateGyroViz(){
   const ctx=canvas.getContext('2d');
   const W=canvas.width,H=canvas.height;
   const cx=W/2,cy=H/2,R=W/2-8;
+
+  const eventGlow = EVENT_FEEDBACK.active &&
+    (Date.now() - EVENT_FEEDBACK.startTs) < 800;
+
+  if (eventGlow) {
+    ctx.shadowColor = 'rgba(14,165,233,.6)';
+    ctx.shadowBlur = 12;
+  } else {
+    ctx.shadowBlur = 0;
+  }
 
   ctx.clearRect(0,0,W,H);
 
@@ -3805,6 +3832,7 @@ function updateGyroViz(){
   ctx.arc(cx,cy,3,0,Math.PI*2);
   ctx.fillStyle='rgba(14,165,233,.6)';
   ctx.fill();
+  ctx.shadowBlur = 0;
 }
 function flashAccelEvent(color){
   const dot=$('avDot'),zFill=$('avZfill');
