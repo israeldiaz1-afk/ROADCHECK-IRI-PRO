@@ -3862,15 +3862,6 @@ async function analyzeEventWithGemini(event,imageBlob){
   }
 }
 
-function showEventThumbnail(event,blob){
-  const url=URL.createObjectURL(blob);
-  const thumb=$('lastEventThumb');
-  if(thumb){
-    thumb.src=url;thumb.style.display='block';thumb.title=event.geminiDescription||event.type;
-    thumb.onclick=()=>openLightbox(url,event);
-    setTimeout(()=>URL.revokeObjectURL(url),60000);
-  }
-}
 function openLightbox(url,event){
   $('lightboxImg').src=url;
   const info=event.geminiDescription
@@ -4353,12 +4344,20 @@ function addToGallery(event){
 function showEventThumbnail(event){
   const thumb=$('lastEventThumb');if(!thumb)return;
   const frames=event._frameBlobs||[];
-  const blob=frames[1]?.blob||frames[0]?.blob;
+  // Eventos manuales (captureManualPhoto) no tienen _frameBlobs — caen a
+  // event.imageBlob, que es lo único que traen.
+  const blob=frames[1]?.blob||frames[0]?.blob||event.imageBlob;
   if(!blob)return;
   const url=URL.createObjectURL(blob);
   thumb.src=url;thumb.style.display='block';
   const eventIdx=GAL.items.findIndex(i=>i.event.id===event.id);
-  thumb.onclick=()=>openGallery(Math.max(0,eventIdx));
+  if(eventIdx===-1){
+    // No está en GAL.items (evento manual) — no hay galería estructurada
+    // A/B/C/D/E que abrir, usar el lightbox simple.
+    thumb.onclick=()=>openLightbox(url,event);
+  }else{
+    thumb.onclick=()=>openGallery(eventIdx);
+  }
   setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 function openGallery(startIdx=0){
