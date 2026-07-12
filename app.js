@@ -337,10 +337,6 @@ function loadCfg(){
   const savedModes=localStorage.getItem('rc_activeModes');
   if(savedModes){try{const m=JSON.parse(savedModes);if(Array.isArray(m)&&m.length)S.activeModes=new Set(m);}catch(e){}}
   else{const old=localStorage.getItem('rc_mode');if(old)S.activeModes=new Set([old]);}
-  // Restaurar preferencia de modo alto-contraste (☀️ Modo exterior)
-  if(localStorage.getItem('rc_high_contrast')==='true'){
-    document.body.classList.add('high-contrast');
-  }
   // Restaurar preferencia de modo nocturno (🌙 Modo nocturno)
   if(localStorage.getItem('rc_night_mode')==='true'){
     document.body.classList.add('night-mode');
