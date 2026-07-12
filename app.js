@@ -525,7 +525,13 @@ async function snapEventsToRoadBatch(events){
     const data=await res.json();
     const ways=data.elements||[];
     if(!ways.length)return;
-    pts.forEach(e=>{
+
+    // Ceder el hilo principal cada CHUNK eventos
+    // procesados, para no bloquear la UI si hay
+    // muchos eventos o muchas vías devueltas
+    const CHUNK=5;
+    for(let idx=0;idx<pts.length;idx++){
+      const e=pts[idx];
       let bestLat=e.lat,bestLon=e.lon,bestDist=Infinity;
       ways.forEach(way=>{
         const geom=way.geometry||[];
@@ -536,7 +542,11 @@ async function snapEventsToRoadBatch(events){
         }
       });
       if(bestDist<15){e.lat=bestLat;e.lon=bestLon;e.snapDist=bestDist;}
-    });
+
+      if((idx+1)%CHUNK===0){
+        await new Promise(resolve=>setTimeout(resolve,0));
+      }
+    }
   }catch(e){
     console.log('[SnapToRoad] Error en lote: '+e.message);
   }
@@ -2215,23 +2225,76 @@ function rOvlp(r1,r2,thr=25){const p1=r1.pts||[],p2=r2.pts||[];for(let i=0;i<p1.
 function mergeEventsIntoStorage(newEvents){
   let stored;
   try{stored=JSON.parse(localStorage.getItem('rc_urban_events')||'[]');}catch(e){stored=[];}
-  const PROXIMITY_M=4; // radio de agrupación en metros
+  const PROXIMITY_M=4;
+
+  // Índice espacial por celdas — evita el find()
+  // lineal sobre todo el histórico por cada evento.
+  // Celda ≈ 11m de lado (0.0001° de latitud), se
+  // consultan la celda propia + las 8 vecinas para
+  // no perder coincidencias en el borde de celda.
+  const CELL=0.0001;
+  const cellKey=(lat,lon)=>
+    Math.round(lat/CELL)+'_'+Math.round(lon/CELL);
+
+  const spatialIndex=new Map();
+  stored.forEach(s=>{
+    if(s.lat==null||s.lon==null)return;
+    const k=cellKey(s.lat,s.lon);
+    if(!spatialIndex.has(k))spatialIndex.set(k,[]);
+    spatialIndex.get(k).push(s);
+  });
+
+  function findNearby(lat,lon){
+    if(lat==null||lon==null)return[];
+    const cLat=Math.round(lat/CELL),cLon=Math.round(lon/CELL);
+    const out=[];
+    for(let dy=-1;dy<=1;dy++){
+      for(let dx=-1;dx<=1;dx++){
+        const k=(cLat+dy)+'_'+(cLon+dx);
+        if(spatialIndex.has(k))out.push(...spatialIndex.get(k));
+      }
+    }
+    return out;
+  }
+
+  function addToIndex(s){
+    if(s.lat==null||s.lon==null)return;
+    const k=cellKey(s.lat,s.lon);
+    if(!spatialIndex.has(k))spatialIndex.set(k,[]);
+    spatialIndex.get(k).push(s);
+  }
 
   newEvents.forEach(ev=>{
-    const match=stored.find(s=>geo(s.lat,s.lon,ev.lat,ev.lon)<=PROXIMITY_M&&s.type===ev.type);
+    const candidates=findNearby(ev.lat,ev.lon);
+    const match=candidates.find(s=>
+      geo(s.lat,s.lon,ev.lat,ev.lon)<=PROXIMITY_M&&s.type===ev.type
+    );
     if(match){
       match.confirmCount++;
-      match.score=(match.score*(match.confirmCount-1)+ev.score)/match.confirmCount; // media móvil
+      match.score=(match.score*(match.confirmCount-1)+ev.score)/match.confirmCount;
       match.confirmed=match.confirmCount>=2;
       match.lastSeen=ev.ts;
     }else{
       const {_frameBlobs,_frameBlob,_clipBlobs,
              imageSrc,imgB64,...evClean}=ev;
-      stored.push({...evClean,lastSeen:ev.ts});
+      const newEntry={...evClean,lastSeen:ev.ts};
+      stored.push(newEntry);
+      addToIndex(newEntry); // para que eventos del
+                             // mismo lote también se
+                             // agrupen entre sí
     }
   });
+
+  // Purga: mantener como máximo los 5000 eventos
+  // más recientes para que el histórico no crezca
+  // sin límite sesión tras sesión
+  const MAX_STORED=5000;
+  const finalStored=stored.length>MAX_STORED
+    ? stored.slice(-MAX_STORED)
+    : stored;
+
   try{
-    localStorage.setItem('rc_urban_events',JSON.stringify(stored));
+    localStorage.setItem('rc_urban_events',JSON.stringify(finalStored));
   }catch(e){
     console.error('[merge]',e.message);
     toast('⚠️ Error guardando eventos: '+e.message);
