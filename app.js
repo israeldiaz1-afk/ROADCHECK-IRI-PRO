@@ -3711,6 +3711,37 @@ const GAL={
   _isDragging:false,_lastTap:0,
   showYOLOBoxes:false
 };
+// ─ Fase V5J / Fase 4: trail del joystick XY ──
+const AV_TRAIL = { points: [], maxPoints: 8 };
+
+function renderAccelTrail() {
+  let trailEl = $('avTrail');
+  if (!trailEl) {
+    const circle = $('avCircle');
+    if (!circle) return;
+    trailEl = document.createElement('svg');
+    trailEl.id = 'avTrail';
+    trailEl.setAttribute('viewBox','0 0 100 100');
+    trailEl.style.cssText =
+      'position:absolute;inset:0;width:100%;height:100%;' +
+      'pointer-events:none;';
+    circle.insertBefore(trailEl, circle.firstChild);
+  }
+
+  const pts = AV_TRAIL.points;
+  if (pts.length < 2) { trailEl.innerHTML=''; return; }
+
+  const path = pts.map((p,i) =>
+    (i===0?'M':'L') + (50+p.x) + ',' + (50+p.y)
+  ).join(' ');
+
+  trailEl.innerHTML = `
+    <path d="${path}" fill="none"
+      stroke="var(--sky)" stroke-width="1.5"
+      stroke-linecap="round" opacity="0.35"/>
+  `;
+}
+
 function updateAccelViz(ax,ay,az){
   const dot=$('avDot'),zFill=$('avZfill'),zVal=$('avZval');
   if(!dot||!zFill||!S.grav)return;
@@ -3774,6 +3805,9 @@ function drawArrow(ctx,x1,y1,x2,y2,color,magnitude){
   ctx.globalAlpha=1;
 }
 
+const GYRO_SMOOTH = { rollMag:0, pitchMag:0 };
+const SMOOTH_FACTOR = 0.3;
+
 function updateGyroViz(){
   const canvas=$('gyroCanvas');
   if(!canvas||!S.gyro)return;
@@ -3807,9 +3841,16 @@ function updateGyroViz(){
   ctx.moveTo(cx,cy-R);ctx.lineTo(cx,cy+R);
   ctx.stroke();
 
+  // Suavizado exponencial de rollMag/pitchMag para evitar saltos bruscos
+  const targetRollMag = Math.min(Math.abs(S.gyro.x)/2, 1);
+  const targetPitchMag = Math.min(Math.abs(S.gyro.y)/2, 1);
+  GYRO_SMOOTH.rollMag += (targetRollMag - GYRO_SMOOTH.rollMag) * SMOOTH_FACTOR;
+  GYRO_SMOOTH.pitchMag += (targetPitchMag - GYRO_SMOOTH.pitchMag) * SMOOTH_FACTOR;
+  const rollMag = GYRO_SMOOTH.rollMag;
+  const pitchMag = GYRO_SMOOTH.pitchMag;
+
   // Flecha ROLL (eje X, rojo — rotación lateral)
   // Bache en una rueda → roll transitorio
-  const rollMag=Math.min(Math.abs(S.gyro.x)/2,1);
   const rollDir=S.gyro.x>=0?1:-1;
   if(rollMag>0.02){
     drawArrow(ctx,cx,cy,
@@ -3819,7 +3860,6 @@ function updateGyroViz(){
 
   // Flecha PITCH (eje Y, azul — rotación longitudinal)
   // Frenada/badén → pitch sostenido
-  const pitchMag=Math.min(Math.abs(S.gyro.y)/2,1);
   const pitchDir=S.gyro.y>=0?-1:1;
   if(pitchMag>0.02){
     drawArrow(ctx,cx,cy,

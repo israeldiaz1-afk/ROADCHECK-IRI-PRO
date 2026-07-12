@@ -551,9 +551,9 @@ body{font-weight:450}
 .av-dot.event{animation:avEventFlash .7s ease-out;}
 .av-zbar-wrap{display:flex;flex-direction:column;align-items:center;width:40px;gap:3px;}
 .av-zbar{position:relative;flex:1;width:20px;background:var(--s1);border-radius:4px;border:1px solid rgba(14,165,233,.2);overflow:hidden;min-height:60px;}
-.av-zfill{position:absolute;bottom:50%;left:1px;right:1px;background:#0EA5E9;min-height:2px;border-radius:2px 2px 0 0;transition:height .06s linear,background .1s;}
-.av-zfill.warn{background:#F59E0B;}
-.av-zfill.bad{background:#EF4444;}
+.av-zfill{position:absolute;bottom:50%;left:1px;right:1px;background:linear-gradient(180deg,var(--sky) 0%,var(--sky-b) 100%);min-height:2px;border-radius:2px 2px 0 0;transition:height .06s linear,background .1s;}
+.av-zfill.warn{background:linear-gradient(180deg,var(--amber) 0%,rgba(245,158,11,.4) 100%);}
+.av-zfill.bad{background:linear-gradient(180deg,var(--bad) 0%,rgba(239,68,68,.4) 100%);}
 @keyframes zEventFlash{0%{opacity:1;filter:brightness(2);}100%{opacity:1;filter:brightness(1);}}
 .av-zfill.event{animation:zEventFlash .7s ease-out;}
 .av-dot.event-glow {
