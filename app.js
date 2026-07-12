@@ -505,23 +505,37 @@ function projectPointOnSegment(pLat,pLon,aLat,aLon,bLat,bLon){
   return{lat:aLat+t*dLat,lon:aLon+t*dLon};
 }
 
-async function snapToRoad(lat,lon){
-  const query=`[out:json][timeout:5];way(around:15,${lat},${lon})["highway"];out geom;`;
+// Snap-to-road en LOTE: una única query Overpass con todos los eventos de la
+// sesión en vez de una petición por evento — evita el rate limit de
+// overpass-api.de (banea IPs con >1-2 req/s) y la race condition de mutar
+// event.lat/lon de forma asíncrona después de pintar el marcador o de que
+// el evento ya se haya serializado. Se llama una sola vez, en
+// stopMeasurement(), antes de que buildUrbanDataFinal() fije los datos.
+async function snapEventsToRoadBatch(events){
+  const pts=events.filter(e=>e.lat!=null&&e.lon!=null);
+  if(!pts.length)return;
+  const clauses=pts.map(e=>`way(around:15,${e.lat},${e.lon})["highway"];`).join('');
+  const query=`[out:json][timeout:15];(${clauses});out geom;`;
   try{
     const res=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(query)});
     const data=await res.json();
-    if(!data.elements?.length)return{lat,lon};
-    let bestLat=lat,bestLon=lon,bestDist=Infinity;
-    data.elements.forEach(way=>{
-      const geom=way.geometry||[];
-      for(let i=0;i<geom.length-1;i++){
-        const proj=projectPointOnSegment(lat,lon,geom[i].lat,geom[i].lon,geom[i+1].lat,geom[i+1].lon);
-        const d=geo(lat,lon,proj.lat,proj.lon);
-        if(d<bestDist){bestDist=d;bestLat=proj.lat;bestLon=proj.lon;}
-      }
+    const ways=data.elements||[];
+    if(!ways.length)return;
+    pts.forEach(e=>{
+      let bestLat=e.lat,bestLon=e.lon,bestDist=Infinity;
+      ways.forEach(way=>{
+        const geom=way.geometry||[];
+        for(let i=0;i<geom.length-1;i++){
+          const proj=projectPointOnSegment(e.lat,e.lon,geom[i].lat,geom[i].lon,geom[i+1].lat,geom[i+1].lon);
+          const d=geo(e.lat,e.lon,proj.lat,proj.lon);
+          if(d<bestDist){bestDist=d;bestLat=proj.lat;bestLon=proj.lon;}
+        }
+      });
+      if(bestDist<15){e.lat=bestLat;e.lon=bestLon;e.snapDist=bestDist;}
     });
-    return bestDist<15?{lat:bestLat,lon:bestLon,snapped:true,snapDist:bestDist}:{lat,lon};
-  }catch{return{lat,lon};}
+  }catch(e){
+    console.log('[SnapToRoad] Error en lote: '+e.message);
+  }
 }
 
 // ─ GPS ───────────────────────────────────────
@@ -1377,12 +1391,8 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   S._recentUrbanEvent=true;setTimeout(()=>{S._recentUrbanEvent=false;},500);
   registerChartMark(severity==='grave'?'#EF4444':'#F59E0B','urban');
   onUrbanEventDetected(event);
-  // Snapping asíncrono — no bloquea el registro
-  snapToRoad(pos.lat,pos.lon).then(snapped=>{
-    if(snapped.snapped){
-      event.lat=snapped.lat;event.lon=snapped.lon;event.snapDist=snapped.snapDist;
-    }
-  });
+  // El snap-to-road ya no se hace por evento — se hace en lote, una sola
+  // vez, en stopMeasurement() (snapEventsToRoadBatch()).
   const frames=VIDEO_BUF.capturing
     ? extractFramesForEvent(event.ts,event.speed||0)
     : [];
@@ -1884,7 +1894,7 @@ async function startMeasurement(){
 }
 function pauseMeasurement(){S.paused=true;$('btnPause').classList.add('hidden');$('btnResume').classList.remove('hidden');toast('⏸ Pausado');}
 function resumeMeasurement(){S.paused=false;$('btnPause').classList.remove('hidden');$('btnResume').classList.add('hidden');toast('▶ Reanudado');}
-function stopMeasurement(){
+async function stopMeasurement(){
   releaseWakeLock();
   $('cameraSelectorModal')?.classList.add('hidden');
   S.active=false;
@@ -1900,6 +1910,10 @@ function stopMeasurement(){
   let iriData=null,urbanData=null,comfortData=null;
 
   if(S.activeModes.has('urban')){
+    if(S.urbanEvents.length>0){
+      toast('📍 Ajustando eventos a la vía…');
+      await snapEventsToRoadBatch(S.urbanEvents);
+    }
     // Solo marcar como pendiente — se construirá en confirmSave() tras validación
     urbanData={ pending: true };
     // Análisis automático de ruido — sin esperar acción del usuario
