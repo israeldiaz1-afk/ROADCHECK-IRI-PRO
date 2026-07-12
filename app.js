@@ -341,6 +341,10 @@ function loadCfg(){
   if(localStorage.getItem('rc_high_contrast')==='true'){
     document.body.classList.add('high-contrast');
   }
+  // Restaurar preferencia de modo nocturno (🌙 Modo nocturno)
+  if(localStorage.getItem('rc_night_mode')==='true'){
+    document.body.classList.add('night-mode');
+  }
 }
 function saveCfg(){try{localStorage.setItem('rc_cfg',JSON.stringify(C));}catch(e){}}
 function saveActiveModes(){try{localStorage.setItem('rc_activeModes',JSON.stringify([...S.activeModes]));}catch(e){}}
