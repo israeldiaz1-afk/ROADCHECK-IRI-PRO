@@ -4728,6 +4728,7 @@ function renderGalleryDots(activeIdx){
     return`<div class="gal-nav-dot${realIdx===activeIdx?' active':''}"></div>`;
   }).join('');
 }
+let _galMouseMove=null,_galMouseUp=null;
 function initGalleryGestures(){
   const canvas=$('galCanvas');if(!canvas)return;
   const newCanvas=canvas.cloneNode(true);
@@ -4796,7 +4797,10 @@ function initGalleryGestures(){
     c.style.cursor = 'grabbing';
   });
 
-  window.addEventListener('mousemove', e => {
+  if(_galMouseMove)window.removeEventListener('mousemove',_galMouseMove);
+  if(_galMouseUp)window.removeEventListener('mouseup',_galMouseUp);
+
+  _galMouseMove = e => {
     if (!mouseDragging) return;
     const dx = e.clientX - lastMouseX;
     const dy = e.clientY - lastMouseY;
@@ -4806,12 +4810,13 @@ function initGalleryGestures(){
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
     drawGalleryCanvas();
-  });
-
-  window.addEventListener('mouseup', () => {
+  };
+  _galMouseUp = () => {
     mouseDragging = false;
     c.style.cursor = GAL.scale > 1 ? 'grab' : 'default';
-  });
+  };
+  window.addEventListener('mousemove', _galMouseMove);
+  window.addEventListener('mouseup', _galMouseUp);
 
   c.addEventListener('dblclick', e => {
     GAL.scale = GAL.scale > 1.5 ? 1 : 3;
