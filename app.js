@@ -2684,7 +2684,7 @@ async function expHTMLUrban(r){
       ? '<span class="ev" style="background:#EF444422;color:#991B1B">🤖 IA sugiere descarte</span>'
       : '';
     const geminiInfo = e.gemini?.description
-      ? `<div class="cd">🔍 "${e.gemini.description}" (conf. ${((e.gemini.confidence||0)*100).toFixed(0)}%)</div>`
+      ? `<div class="cd">🔍 "${escH(e.gemini.description)}" (conf. ${((e.gemini.confidence||0)*100).toFixed(0)}%)</div>`
       : '';
     const yoloInfo = e.yolo?.confirmed
       ? `<div class="cd" style="color:#0EA5E9">🎯 YOLO detectó: ${e.yolo.topClass} (${(e.yolo.topConf*100).toFixed(0)}%)</div>`
@@ -4575,7 +4575,7 @@ function renderGalleryItem(idx){
       <tr style="border-bottom:1px solid rgba(14,165,233,.1)">
         <td style="color:var(--dim);padding:4px 6px">Gemini</td>
         <td colspan="3" style="padding:4px 6px;color:var(--dim);font-style:italic">
-          ${event.gemini?.description||'—'}
+          ${escH(event.gemini?.description||'—')}
           ${event.gemini?.confidence
             ? ` (${(event.gemini.confidence*100).toFixed(0)}%)`:''}
         </td>
