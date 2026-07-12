@@ -3789,6 +3789,30 @@ function updateAdaptiveCalUI(){
 // ─ Análisis Gemini (Fase 3) ───────────────────
 async function analyzeEventWithGemini(event,imageBlob){
   if(!imageBlob)return;
+  if(_urlParams.has('mockGemini')){
+    // Respuesta canned sin tocar el Worker — ahorra cuota y hace
+    // deterministas los tests con ?sim. Echa la clasificación por
+    // vibración ya calculada en vez de inventar una nueva.
+    const mockDiscard=!event.type||event.type==='unknown';
+    const analysis={
+      type:event.type||'unknown',
+      severity:event.severity||'leve',
+      confidence:mockDiscard?0.25:0.75,
+      description:'[MOCK] '+(event.type||'evento')+' simulado (?mockGemini)',
+      discard:mockDiscard
+    };
+    event.gemini=analysis;
+    event.imageBlob=imageBlob;
+    if(analysis.discard){
+      event.geminiSuggestsDiscard=true;
+    }else{
+      event.geminiConfidence=analysis.confidence;
+      event.geminiDescription=analysis.description;
+    }
+    console.log('[Gemini][MOCK] '+analysis.type+'/'+analysis.severity+' conf='+analysis.confidence);
+    queueUI('urban_meas',updateUrbanMeasPanel);
+    return analysis;
+  }
   const base64=await new Promise(resolve=>{
     const reader=new FileReader();
     reader.onload=()=>resolve(reader.result.split(',')[1]);
@@ -4045,8 +4069,67 @@ function iouYolo(a, b) {
   return inter/((a.x2-a.x1)*(a.y2-a.y1)+(b.x2-b.x1)*(b.y2-b.y1)-inter);
 }
 
+// ─ Fase 2 / S4: Mocks de capa visual (?sim) ────
+// Sirve frames desde /sim/frames/*.jpg si existen; si el repo aún no tiene
+// fotos reales de baches ahí, genera placeholders sintéticos por canvas
+// para que el pipeline de calidad + YOLO + Gemini tengan igualmente algo
+// que analizar. YOLO corre de verdad sobre estos frames — es local y
+// determinista, no necesita mock propio.
+const MOCK_FRAME_URLS = Array.from({length:8}, (_,i)=>`/sim/frames/frame${i+1}.jpg`);
+let _mockFramesCache = null;
+
+function synthMockFrameBlob(){
+  return new Promise(resolve=>{
+    const c=document.createElement('canvas');
+    c.width=640;c.height=480;
+    const ctx=c.getContext('2d');
+    ctx.fillStyle='#4a4a4a';ctx.fillRect(0,0,640,480);
+    ctx.fillStyle='#3a3a3a';
+    for(let i=0;i<40;i++)ctx.fillRect(Math.random()*640,Math.random()*480,2,2);
+    ctx.fillStyle='#222';
+    ctx.beginPath();
+    ctx.ellipse(
+      220+Math.random()*200,260+Math.random()*100,
+      50+Math.random()*40,30+Math.random()*20,
+      0,0,Math.PI*2
+    );
+    ctx.fill();
+    c.toBlob(b=>resolve(b),'image/jpeg',0.8);
+  });
+}
+async function loadMockFrame(url){
+  try{
+    const res=await fetch(url);
+    if(!res.ok)throw new Error('404');
+    return await res.blob();
+  }catch(e){
+    return synthMockFrameBlob(); // sin JPEGs reales en /sim/frames/ — placeholder sintético
+  }
+}
+async function startMockVideoBuffer(){
+  stopVideoBuffer();
+  if(!_mockFramesCache){
+    _mockFramesCache=await Promise.all(MOCK_FRAME_URLS.map(loadMockFrame));
+  }
+  VIDEO_BUF.capturing=true;
+  toast('🎬 VIDEO_BUF simulado — frames de /sim/frames/');
+  VIDEO_BUF.captureInterval=setInterval(()=>{
+    if(!VIDEO_BUF.capturing)return;
+    const blob=_mockFramesCache[Math.floor(Math.random()*_mockFramesCache.length)];
+    const ts=Date.now();
+    VIDEO_BUF.frames.push({ts,blob});
+    const cutoff=ts-VIDEO_BUF.maxAgeMs;
+    while(VIDEO_BUF.frames.length>0&&VIDEO_BUF.frames[0].ts<cutoff)
+      VIDEO_BUF.frames.shift();
+  },VIDEO_BUF.captureIntervalMs);
+}
+
 async function initCameraSelector(){
   S.selectedCameraId=null;
+  if(_urlParams.has('sim')){
+    await startMockVideoBuffer();
+    return;
+  }
   await startVideoBuffer();
 }
 function openCameraSelector(){
