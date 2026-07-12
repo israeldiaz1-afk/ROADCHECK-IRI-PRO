@@ -1363,6 +1363,19 @@ async function annotateFrameForHuman(blob, event) {
   });
 }
 
+// Genera y persiste el frame anotado para validación humana. Se llama sin
+// esperar a YOLO (frame disponible siempre) y de nuevo cuando YOLO resuelve
+// (frame reanotado con las cajas) — ver PASO 4/5 de registerEvent().
+async function annotateAndSaveHuman(event, frameSharp) {
+  const frameHuman = await annotateFrameForHuman(frameSharp, event);
+  event._frameBlob = frameHuman;
+  await saveImageBlob(event.id+'_best_human', frameHuman);
+  queueUI('gallery_refresh', () => {
+    if (GAL.items.some(i=>i.event.id===event.id))
+      renderGalleryItem(GAL.idx);
+  });
+}
+
 function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   if(!S.lastPos)return;
   const pos=getBestPosition()||S.lastPos;
@@ -1427,7 +1440,9 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
         // Guardar versión IA en IndexedDB
         await saveImageBlob(event.id+'_best_ia', frameForAI);
 
-        // PASO 4: YOLO sobre versión IA
+        // PASO 4: YOLO sobre versión IA (si está listo) — no bloquea la
+        // anotación del PASO 5, que se genera igual aunque YOLO no esté
+        // disponible todavía o falle
         if (YOLO_STATE.ready) {
           runYOLO(frameForAI).then(async detections => {
             event.yolo = { detections: detections||[] };
@@ -1443,25 +1458,21 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
               event._scores.yolo = 0.2;
             }
             evaluateFusion(event);
-
-            // PASO 5: Anotar para humano (incluye YOLO boxes)
-            const frameHuman = await annotateFrameForHuman(
-              frameSharp, event
-            );
-            event._frameBlob = frameHuman;
-            await saveImageBlob(
-              event.id+'_best_human', frameHuman
-            );
-
-            queueUI('gallery_refresh', () => {
-              if (GAL.items.some(i=>i.event.id===event.id))
-                renderGalleryItem(GAL.idx);
-            });
+            // Reanotar ya con las cajas de YOLO disponibles — sustituye
+            // el frame sin cajas del PASO 5 (misma clave en IndexedDB)
+            await annotateAndSaveHuman(event, frameSharp);
           }).catch(() => {
             event._scores.yolo = 0.2;
             evaluateFusion(event);
           });
         }
+
+        // PASO 5: Anotar para humano de inmediato, sin esperar a YOLO —
+        // annotateFrameForHuman() ya usa ?. sobre event.yolo, así que
+        // funciona igual si las detecciones aún no han llegado. Si YOLO
+        // sí está listo y resuelve después, el callback de arriba
+        // regenera el frame con las cajas ya incluidas.
+        await annotateAndSaveHuman(event, frameSharp);
 
         // PASO 6: Gemini sobre versión IA
         analyzeEventWithGemini(event, frameForAI)
