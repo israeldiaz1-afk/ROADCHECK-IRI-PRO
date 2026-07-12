@@ -4181,39 +4181,7 @@ async function startVideoBuffer(){
     VIDEO_BUF.stream = await navigator.mediaDevices
       .getUserMedia(constraints);
 
-    // Intentar control manual de exposición
-    const track = VIDEO_BUF.stream.getVideoTracks()[0];
-    if (track && track.getCapabilities) {
-      const caps = track.getCapabilities();
-      console.log('[Cam] Capacidades:', JSON.stringify(caps));
-      const settings = {};
-      if (caps.exposureMode?.includes('manual')) {
-        settings.exposureMode = 'manual';
-      }
-      if (caps.exposureTime) {
-        // Usar el mínimo disponible para reducir blur
-        settings.exposureTime = Math.max(
-          caps.exposureTime.min,
-          Math.min(caps.exposureTime.max, 1000)
-        );
-      }
-      // Compensación de exposición negativa —
-      // evita saturación en escenas muy brillantes
-      if (caps.exposureCompensation) {
-        settings.exposureCompensation = Math.max(
-          caps.exposureCompensation.min,
-          caps.exposureCompensation.min * 0.5
-        );
-      }
-      if (Object.keys(settings).length > 0) {
-        try {
-          await track.applyConstraints({ advanced: [settings] });
-          console.log('[Cam] Exposición aplicada:', JSON.stringify(settings));
-        } catch(e) {
-          console.log('[Cam] Exposición no soportada: ' + e.message);
-        }
-      }
-    }
+    const track = VIDEO_BUF.stream.getVideoTracks()[0]; // reutilizado más abajo para el log de frameRate
 
     if(!VIDEO_BUF.canvas){
       VIDEO_BUF.canvas=document.createElement('canvas');
