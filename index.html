@@ -401,10 +401,21 @@ html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--ui
 #galCanvas{display:block;width:100%;height:100%;object-fit:contain;touch-action:none}
 .gal-frame-badge{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;font-size:.65rem;font-family:var(--mono);padding:3px 8px;border-radius:8px;pointer-events:none}
 .gal-no-image{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:2rem}
-.gal-thumbs{display:flex;gap:6px;padding:6px 14px;background:#000;flex-shrink:0;overflow-x:auto;justify-content:center}
+.gal-thumbs{
+  display:flex;gap:6px;padding:6px 14px;
+  background:#000;flex-shrink:0;
+  overflow-x:auto;
+  justify-content:flex-start;
+  scroll-snap-type:x proximity;
+  -webkit-overflow-scrolling:touch;
+}
 .gal-thumb{width:72px;height:54px;object-fit:cover;border-radius:4px;cursor:pointer;flex-shrink:0;border:2px solid transparent;transition:border-color .15s,opacity .15s;opacity:.6}
 .gal-thumb.active{border-color:var(--sky);opacity:1}
-.gal-thumb-wrap{position:relative;flex-shrink:0}
+.gal-thumb-wrap{
+  position:relative;
+  flex-shrink:0;
+  scroll-snap-align:center;
+}
 .gal-thumb-label{position:absolute;bottom:2px;left:50%;transform:translateX(-50%);font-size:.5rem;color:#fff;background:rgba(0,0,0,.5);padding:1px 4px;border-radius:3px;pointer-events:none;font-family:var(--mono)}
 .gal-info{padding:8px 14px;flex-shrink:0;border-top:1px solid rgba(14,165,233,.1)}
 .gal-kbd-hint{font-size:.62rem;color:var(--dim);font-family:var(--mono);margin-top:6px;padding-top:6px;border-top:1px dashed rgba(14,165,233,.15)}
