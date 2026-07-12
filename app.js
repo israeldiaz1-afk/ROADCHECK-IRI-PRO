@@ -4197,6 +4197,14 @@ async function startVideoBuffer(){
           Math.min(caps.exposureTime.max, 1000)
         );
       }
+      // Compensación de exposición negativa —
+      // evita saturación en escenas muy brillantes
+      if (caps.exposureCompensation) {
+        settings.exposureCompensation = Math.max(
+          caps.exposureCompensation.min,
+          caps.exposureCompensation.min * 0.5
+        );
+      }
       if (Object.keys(settings).length > 0) {
         try {
           await track.applyConstraints({ advanced: [settings] });
