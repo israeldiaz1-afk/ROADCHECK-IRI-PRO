@@ -4364,8 +4364,8 @@ async function startVideoBuffer(){
     const constraints = {
       video: {
         facingMode: 'environment',
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { min: 1280, ideal: 1920, max: 3840 },
+        height: { min: 720, ideal: 1080, max: 2160 },
         frameRate: { ideal: 60 }
       },
       audio: false
@@ -4399,11 +4399,19 @@ async function startVideoBuffer(){
     const realH = VIDEO_BUF.video.videoHeight || 720;
     console.log('[Video] Resolución real: '+realW+'x'+realH);
 
-    // Canvas de captura a la resolución completa
-    // real (no reducir aquí — el recorte se hace
-    // en el drawImage de cada frame)
-    VIDEO_BUF.canvas.width = 960;
-    VIDEO_BUF.canvas.height = 720;
+    // Tras recortar el FOV (30% superior, 12%
+    // inferior, 8% cada lateral), calculamos
+    // el tamaño resultante y lo usamos como
+    // destino, con un techo de 1280x960 para
+    // no disparar el coste de CLAHE/sharpen
+    const croppedW = realW * (1 - 0.08*2);
+    const croppedH = realH * (1 - 0.30 - 0.12);
+    const MAX_W = 1280, MAX_H = 960;
+    const scale = Math.min(1, MAX_W/croppedW, MAX_H/croppedH);
+    VIDEO_BUF.canvas.width  = Math.round(croppedW * scale);
+    VIDEO_BUF.canvas.height = Math.round(croppedH * scale);
+    console.log('[Video] Canvas destino: '+
+      VIDEO_BUF.canvas.width+'x'+VIDEO_BUF.canvas.height);
 
     // Guardar la resolución real para el recorte
     VIDEO_BUF._srcW = realW;
@@ -4448,7 +4456,7 @@ async function startVideoBuffer(){
           while(VIDEO_BUF.frames.length>0&&
                 VIDEO_BUF.frames[0].ts<cutoff)
             VIDEO_BUF.frames.shift();
-        },'image/jpeg',0.85); // subir calidad de 0.75 a 0.85
+        },'image/jpeg',0.92); // subir calidad de 0.85 a 0.92
       }catch(e){}
     },VIDEO_BUF.captureIntervalMs);
     VIDEO_BUF.capturing=true;
