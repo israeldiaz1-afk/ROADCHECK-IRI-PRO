@@ -4037,13 +4037,25 @@ async function analyzeEventWithGemini(event,imageBlob){
       toast('🔍 IA sugiere falso positivo — revísalo en la galería');
       console.log('[Gemini] Sugiere descarte: '+analysis.description);
     }else{
-      if(analysis.type&&analysis.type!=='unknown')event.type=analysis.type;
-      if(analysis.severity&&analysis.severity!=='none')event.severity=analysis.severity;
+      // Solo promocionar la clasificación de Gemini
+      // por encima de la de vibración si su confianza
+      // es alta (>=0.7). Con confianza baja, Gemini
+      // no vio nada claro — no debe degradar una
+      // severidad ya calculada por el sensor.
+      const CONFIDENCE_THRESHOLD = 0.7;
+      if (analysis.confidence >= CONFIDENCE_THRESHOLD) {
+        if(analysis.type&&analysis.type!=='unknown')event.type=analysis.type;
+        if(analysis.severity&&analysis.severity!=='none')event.severity=analysis.severity;
+      }
+      // La propuesta de Gemini siempre se guarda
+      // aparte, la vea el humano o no se promocione
       event.geminiConfidence=analysis.confidence;
       event.geminiDescription=analysis.description;
       showEventThumbnail(event,imageBlob);
       toast('🔍 '+analysis.description+' (conf. '+(analysis.confidence*100).toFixed(0)+'%)');
-      console.log('[Gemini] '+analysis.type+'/'+analysis.severity+' conf='+analysis.confidence+' — '+analysis.description);
+      console.log('[Gemini] '+analysis.type+'/'+analysis.severity+
+        ' conf='+analysis.confidence+' — '+analysis.description+
+        (analysis.confidence>=CONFIDENCE_THRESHOLD?' [PROMOCIONADO]':' [solo propuesta, confianza baja]'));
     }
     queueUI('urban_meas',updateUrbanMeasPanel);
     return analysis;
@@ -4366,8 +4378,6 @@ async function startVideoBuffer(){
     if(!VIDEO_BUF.canvas){
       VIDEO_BUF.canvas=document.createElement('canvas');
     }
-    VIDEO_BUF.canvas.width=640;
-    VIDEO_BUF.canvas.height=480;
     VIDEO_BUF.ctx=VIDEO_BUF.canvas.getContext('2d');
     VIDEO_BUF.video=document.createElement('video');
     VIDEO_BUF.video.srcObject=VIDEO_BUF.stream;
@@ -4381,13 +4391,55 @@ async function startVideoBuffer(){
       setTimeout(reject,5000); // timeout 5s
       VIDEO_BUF.video.play().catch(reject);
     });
+
+    // Tras play()/oncanplay resuelto, leer la resolución REAL entregada
+    // por la cámara (puede ser mayor que el ideal pedido, o el
+    // navegador puede dar otra):
+    const realW = VIDEO_BUF.video.videoWidth || 1280;
+    const realH = VIDEO_BUF.video.videoHeight || 720;
+    console.log('[Video] Resolución real: '+realW+'x'+realH);
+
+    // Canvas de captura a la resolución completa
+    // real (no reducir aquí — el recorte se hace
+    // en el drawImage de cada frame)
+    VIDEO_BUF.canvas.width = 960;
+    VIDEO_BUF.canvas.height = 720;
+
+    // Guardar la resolución real para el recorte
+    VIDEO_BUF._srcW = realW;
+    VIDEO_BUF._srcH = realH;
+
     VIDEO_BUF.captureInterval=setInterval(()=>{
       if(!VIDEO_BUF.video||
          VIDEO_BUF.video.readyState<2||
          VIDEO_BUF.video.paused) return;
       try{
+        const srcW = VIDEO_BUF._srcW || VIDEO_BUF.video.videoWidth;
+        const srcH = VIDEO_BUF._srcH || VIDEO_BUF.video.videoHeight;
+
+        // Recortar el FOV: descartar el tercio
+        // superior (cielo) y el 12% inferior
+        // (salpicadero), quedarnos con la franja
+        // central-inferior donde está el pavimento.
+        // También recortamos un poco los laterales
+        // para centrar la vía.
+        const cropTop    = srcH * 0.30; // quitar 30% superior (cielo)
+        const cropBottom = srcH * 0.12; // quitar 12% inferior (salpicadero)
+        const cropSideX  = srcW * 0.08; // quitar 8% de cada lateral
+
+        const sx = cropSideX;
+        const sy = cropTop;
+        const sWidth  = srcW - cropSideX*2;
+        const sHeight = srcH - cropTop - cropBottom;
+
         VIDEO_BUF.ctx.drawImage(
-          VIDEO_BUF.video,0,0,640,480);
+          VIDEO_BUF.video,
+          sx, sy, sWidth, sHeight,      // recorte origen
+          0, 0,
+          VIDEO_BUF.canvas.width,
+          VIDEO_BUF.canvas.height        // destino (960x720)
+        );
+
         VIDEO_BUF.canvas.toBlob(blob=>{
           if(!blob)return;
           const ts=Date.now();
@@ -4396,7 +4448,7 @@ async function startVideoBuffer(){
           while(VIDEO_BUF.frames.length>0&&
                 VIDEO_BUF.frames[0].ts<cutoff)
             VIDEO_BUF.frames.shift();
-        },'image/jpeg',0.75);
+        },'image/jpeg',0.85); // subir calidad de 0.75 a 0.85
       }catch(e){}
     },VIDEO_BUF.captureIntervalMs);
     VIDEO_BUF.capturing=true;
@@ -4409,29 +4461,6 @@ async function startVideoBuffer(){
   }catch(e){
     toast('⚠️ Cámara no disponible: '+e.name);
     VIDEO_BUF.capturing=false;
-  }
-}
-
-function captureFrame(){
-  if(!VIDEO_BUF.video||VIDEO_BUF.video.readyState<2)return;
-  if(!VIDEO_BUF.ctx||!VIDEO_BUF.canvas)return;
-  try{
-    VIDEO_BUF.ctx.drawImage(
-      VIDEO_BUF.video,0,0,
-      VIDEO_BUF.canvas.width,
-      VIDEO_BUF.canvas.height
-    );
-    VIDEO_BUF.canvas.toBlob(blob=>{
-      if(!blob)return;
-      const ts=Date.now();
-      VIDEO_BUF.frames.push({ts,blob});
-      const cutoff=ts-VIDEO_BUF.maxAgeMs;
-      while(VIDEO_BUF.frames.length>0&&
-            VIDEO_BUF.frames[0].ts<cutoff)
-        VIDEO_BUF.frames.shift();
-    },'image/jpeg',0.80);
-  }catch(e){
-    console.error('[captureFrame]',e.message);
   }
 }
 
