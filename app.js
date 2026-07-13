@@ -1161,254 +1161,6 @@ async function selectBestFrames(frameBlobs) {
   return sorted.slice(0, 3).map(a => a.frame);
 }
 
-async function sharpenBlob(blob) {
-  return new Promise(resolve => {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const W = img.width, H = img.height;
-      const canvas = document.createElement('canvas');
-      canvas.width = W; canvas.height = H;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      const src = ctx.getImageData(0, 0, W, H);
-      const dst = ctx.createImageData(W, H);
-      const d = src.data, o = dst.data;
-
-      // Kernel de sharpen:
-      // [ 0,-1, 0]
-      // [-1, 5,-1]
-      // [ 0,-1, 0]
-      for (let y = 1; y < H-1; y++) {
-        for (let x = 1; x < W-1; x++) {
-          for (let c = 0; c < 3; c++) {
-            const i = (y*W+x)*4+c;
-            const val =
-              5 * d[i] -
-              d[((y-1)*W+x)*4+c] -
-              d[((y+1)*W+x)*4+c] -
-              d[(y*W+(x-1))*4+c] -
-              d[(y*W+(x+1))*4+c];
-            o[i] = Math.max(0, Math.min(255, val));
-          }
-          o[(y*W+x)*4+3] = 255; // alpha
-        }
-      }
-      ctx.putImageData(dst, 0, 0);
-      canvas.toBlob(b => resolve(b||blob),
-        'image/jpeg', 0.88);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url); resolve(blob);
-    };
-    img.src = url;
-  });
-}
-
-// ─ CLAHE — contraste adaptativo para IA y para humanos ──────
-function applyCLAHE(imageData, strength = 0.5) {
-  const data = imageData.data;
-  const W = imageData.width;
-  const H = imageData.height;
-  const BLOCK = 32;
-  const nBlocksX = Math.ceil(W / BLOCK);
-  const nBlocksY = Math.ceil(H / BLOCK);
-
-  // PASO 1: calcular CDF de cada bloque de la grilla
-  // (guardamos todos los CDFs antes de aplicar nada)
-  const cdfGrid = [];
-  for (let by = 0; by < nBlocksY; by++) {
-    cdfGrid[by] = [];
-    for (let bx = 0; bx < nBlocksX; bx++) {
-      const x0 = bx*BLOCK, y0 = by*BLOCK;
-      const bw = Math.min(BLOCK, W-x0);
-      const bh = Math.min(BLOCK, H-y0);
-      const hist = new Array(256).fill(0);
-      let count = 0;
-      for (let y = y0; y < y0+bh; y++) {
-        for (let x = x0; x < x0+bw; x++) {
-          const i = (y*W+x)*4;
-          const lum = Math.round(
-            0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]);
-          hist[lum]++; count++;
-        }
-      }
-      const clipLimit = Math.max(1,
-        Math.round(strength * count / 128));
-      let excess = 0;
-      for (let i=0;i<256;i++){
-        if(hist[i]>clipLimit){excess+=hist[i]-clipLimit;hist[i]=clipLimit;}
-      }
-      const redistrib = Math.floor(excess/256);
-      for (let i=0;i<256;i++) hist[i]+=redistrib;
-      const cdf = new Array(256).fill(0);
-      cdf[0]=hist[0];
-      for (let i=1;i<256;i++) cdf[i]=cdf[i-1]+hist[i];
-      const cdfMin = cdf.find(v=>v>0)||1;
-      cdfGrid[by][bx] = {cdf, cdfMin, count};
-    }
-  }
-
-  // PASO 2: aplicar transformación por PÍXEL con
-  // interpolación bilineal entre los 4 bloques
-  // (centros de bloque) más cercanos
-  for (let y = 0; y < H; y++) {
-    // Posición del píxel relativa a centros de bloque
-    const fy = (y - BLOCK/2) / BLOCK;
-    const by0 = Math.max(0, Math.min(nBlocksY-1, Math.floor(fy)));
-    const by1 = Math.min(nBlocksY-1, by0+1);
-    const wy = Math.max(0, Math.min(1, fy - by0));
-
-    for (let x = 0; x < W; x++) {
-      const fx = (x - BLOCK/2) / BLOCK;
-      const bx0 = Math.max(0, Math.min(nBlocksX-1, Math.floor(fx)));
-      const bx1 = Math.min(nBlocksX-1, bx0+1);
-      const wx = Math.max(0, Math.min(1, fx - bx0));
-
-      const i = (y*W+x)*4;
-      const lum = Math.round(
-        0.299*data[i]+0.587*data[i+1]+0.114*data[i+2]);
-
-      // Transformar lum con cada uno de los 4 CDFs vecinos
-      const transform = (cell) => {
-        const {cdf, cdfMin, count} = cell;
-        return (cdf[lum]-cdfMin)/(Math.max(1,count-cdfMin))*255;
-      };
-      const v00 = transform(cdfGrid[by0][bx0]);
-      const v10 = transform(cdfGrid[by0][bx1]);
-      const v01 = transform(cdfGrid[by1][bx0]);
-      const v11 = transform(cdfGrid[by1][bx1]);
-
-      // Interpolación bilineal
-      const newLum =
-        v00*(1-wx)*(1-wy) + v10*wx*(1-wy) +
-        v01*(1-wx)*wy     + v11*wx*wy;
-
-      const factor = lum > 0 ? newLum/lum : 1;
-      data[i]   = Math.min(255, Math.round(data[i]  *factor));
-      data[i+1] = Math.min(255, Math.round(data[i+1]*factor));
-      data[i+2] = Math.min(255, Math.round(data[i+2]*factor));
-    }
-  }
-  return imageData;
-}
-
-// Aplicar CLAHE a un blob y devolver blob mejorado
-async function applyCLAHEToBlob(blob, strength = 0.5) {
-  return new Promise(resolve => {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      const imageData = ctx.getImageData(
-        0, 0, img.width, img.height);
-      applyCLAHE(imageData, strength);
-      ctx.putImageData(imageData, 0, 0);
-      canvas.toBlob(b => resolve(b||blob),
-        'image/jpeg', 0.88);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url); resolve(blob);
-    };
-    img.src = url;
-  });
-}
-
-// ─ Anotaciones visuales para validación humana ──────
-async function annotateFrameForHuman(blob, event) {
-  return new Promise(resolve => {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const W = img.width, H = img.height;
-      const canvas = document.createElement('canvas');
-      canvas.width = W; canvas.height = H;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-
-      // 1. Bounding box de YOLO si existe
-      if (event.yolo?.detections?.length > 0) {
-        const colors = {
-          pothole:'#EF4444', alligator_crack:'#F97316',
-          longitudinal_crack:'#F59E0B',
-          transverse_crack:'#EAB308', manhole:'#8B5CF6'
-        };
-        event.yolo.detections.forEach(det => {
-          const color = colors[det.className]||'#0EA5E9';
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 3;
-          ctx.strokeRect(det.x1, det.y1,
-            det.x2-det.x1, det.y2-det.y1);
-          // Etiqueta del bounding box
-          ctx.fillStyle = color;
-          ctx.font = 'bold 14px monospace';
-          ctx.fillRect(det.x1, det.y1-20,
-            ctx.measureText(
-              det.className+' '+
-              (det.conf*100).toFixed(0)+'%'
-            ).width + 8, 20);
-          ctx.fillStyle = '#fff';
-          ctx.fillText(
-            det.className+' '+
-            (det.conf*100).toFixed(0)+'%',
-            det.x1+4, det.y1-4
-          );
-        });
-      }
-
-      // 2. Banda de información en la parte inferior
-      const bandH = 36;
-      ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(0, H-bandH, W, bandH);
-      ctx.fillStyle = '#fff';
-      ctx.font = '12px monospace';
-
-      const info = [
-        event.speed?.toFixed(0)+'km/h',
-        event.severity||'—',
-        'Score:'+event.score?.toFixed(0),
-        event.gemini?.description
-          ? '"'+event.gemini.description.slice(0,40)+'"'
-          : ''
-      ].filter(Boolean).join('  ·  ');
-
-      ctx.fillText(info, 8, H-10);
-
-      // 3. Flecha de dirección de marcha
-      ctx.fillStyle = 'rgba(14,165,233,0.8)';
-      ctx.font = 'bold 20px sans-serif';
-      ctx.fillText('↑', W-30, H-bandH-10);
-
-      canvas.toBlob(b => resolve(b||blob),
-        'image/jpeg', 0.90);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url); resolve(blob);
-    };
-    img.src = url;
-  });
-}
-
-// Genera y persiste el frame anotado para validación humana. Se llama sin
-// esperar a YOLO (frame disponible siempre) y de nuevo cuando YOLO resuelve
-// (frame reanotado con las cajas) — ver PASO 4/5 de registerEvent().
-async function annotateAndSaveHuman(event, frameSharp) {
-  const frameHuman = await annotateFrameForHuman(frameSharp, event);
-  event._frameBlob = frameHuman;
-  await saveImageBlob(event.id+'_best_human', frameHuman);
-  queueUI('gallery_refresh', () => {
-    if (GAL.items.some(i=>i.event.id===event.id))
-      renderGalleryItem(GAL.idx);
-  });
-}
-
 // ─ Feedback de detección: flash de pantalla + resplandor sincronizado
 // en updateAccelViz()/updateGyroViz() (leen EVENT_FEEDBACK.active/.startTs) ──
 const EVENT_FEEDBACK = {
@@ -1472,11 +1224,11 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
   event._frameBlob=frames[1]?.blob||frames[0]?.blob;
 
   if (frames.length > 0) {
-    // Pipeline de calidad completo (asíncrono, no bloquea)
     (async () => {
       try {
-        // PASO 1: Seleccionar los mejores frames
-        // (filtra sobreexpuestos, elige más nítidos)
+        // Seleccionar el mejor frame natural
+        // (filtra sobreexpuestos, elige más nítido)
+        // — SIN alterar los píxeles
         const bestFrames = await selectBestFrames(frames);
         const bestFrame = bestFrames[0];
         if (!bestFrame) return;
@@ -1484,26 +1236,14 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
         console.log('[Pipeline] Mejor frame: ' +
           bestFrame.label);
 
-        // PASO 2: Versión para IA — CLAHE suave
-        // (mejora contraste sin artefactos)
-        const frameForAI = await applyCLAHEToBlob(
-          bestFrame.blob, 0.3
-        );
+        // Guardar el frame natural seleccionado,
+        // sin ningún procesado — misma imagen para
+        // YOLO, Gemini, galería e informe
+        await saveImageBlob(event.id+'_best', bestFrame.blob);
 
-        // PASO 3: Versión para humano — CLAHE + sharpen + anotaciones
-        const frameCLAHE = await applyCLAHEToBlob(
-          bestFrame.blob, 0.6
-        );
-        const frameSharp = await sharpenBlob(frameCLAHE);
-
-        // Guardar versión IA en IndexedDB
-        await saveImageBlob(event.id+'_best_ia', frameForAI);
-
-        // PASO 4: YOLO sobre versión IA (si está listo) — no bloquea la
-        // anotación del PASO 5, que se genera igual aunque YOLO no esté
-        // disponible todavía o falle
+        // YOLO sobre el frame natural
         if (YOLO_STATE.ready) {
-          runYOLO(frameForAI).then(async detections => {
+          runYOLO(bestFrame.blob).then(detections => {
             event.yolo = { detections: detections||[] };
             if (detections?.length > 0) {
               const best = detections
@@ -1517,24 +1257,18 @@ function registerEvent({triggerTs,speed,severity,score,type,features,waveform}){
               event._scores.yolo = 0.2;
             }
             evaluateFusion(event);
-            // Reanotar ya con las cajas de YOLO disponibles — sustituye
-            // el frame sin cajas del PASO 5 (misma clave en IndexedDB)
-            await annotateAndSaveHuman(event, frameSharp);
+            queueUI('gallery_refresh', () => {
+              if (GAL.items.some(i=>i.event.id===event.id))
+                renderGalleryItem(GAL.idx);
+            });
           }).catch(() => {
             event._scores.yolo = 0.2;
             evaluateFusion(event);
           });
         }
 
-        // PASO 5: Anotar para humano de inmediato, sin esperar a YOLO —
-        // annotateFrameForHuman() ya usa ?. sobre event.yolo, así que
-        // funciona igual si las detecciones aún no han llegado. Si YOLO
-        // sí está listo y resuelve después, el callback de arriba
-        // regenera el frame con las cajas ya incluidas.
-        await annotateAndSaveHuman(event, frameSharp);
-
-        // PASO 6: Gemini sobre versión IA
-        analyzeEventWithGemini(event, frameForAI)
+        // Gemini sobre el frame natural
+        analyzeEventWithGemini(event, bestFrame.blob)
           .then(result => {
             if (!result) return;
             event.gemini = result;
@@ -4399,53 +4133,27 @@ async function startVideoBuffer(){
     const realH = VIDEO_BUF.video.videoHeight || 720;
     console.log('[Video] Resolución real: '+realW+'x'+realH);
 
-    // Tras recortar el FOV (30% superior, 12%
-    // inferior, 8% cada lateral), calculamos
-    // el tamaño resultante y lo usamos como
-    // destino, con un techo de 1280x960 para
-    // no disparar el coste de CLAHE/sharpen
-    const croppedW = realW * (1 - 0.08*2);
-    const croppedH = realH * (1 - 0.30 - 0.12);
-    const MAX_W = 1280, MAX_H = 960;
-    const scale = Math.min(1, MAX_W/croppedW, MAX_H/croppedH);
-    VIDEO_BUF.canvas.width  = Math.round(croppedW * scale);
-    VIDEO_BUF.canvas.height = Math.round(croppedH * scale);
+    // Canvas de captura = resolución nativa completa,
+    // sin recorte de FOV ni reescalado — imagen natural
+    const MAX_W = 1920, MAX_H = 1440; // techo de seguridad
+    const scale = Math.min(1, MAX_W/realW, MAX_H/realH);
+    VIDEO_BUF.canvas.width  = Math.round(realW * scale);
+    VIDEO_BUF.canvas.height = Math.round(realH * scale);
     console.log('[Video] Canvas destino: '+
       VIDEO_BUF.canvas.width+'x'+VIDEO_BUF.canvas.height);
-
-    // Guardar la resolución real para el recorte
-    VIDEO_BUF._srcW = realW;
-    VIDEO_BUF._srcH = realH;
 
     VIDEO_BUF.captureInterval=setInterval(()=>{
       if(!VIDEO_BUF.video||
          VIDEO_BUF.video.readyState<2||
          VIDEO_BUF.video.paused) return;
       try{
-        const srcW = VIDEO_BUF._srcW || VIDEO_BUF.video.videoWidth;
-        const srcH = VIDEO_BUF._srcH || VIDEO_BUF.video.videoHeight;
-
-        // Recortar el FOV: descartar el tercio
-        // superior (cielo) y el 12% inferior
-        // (salpicadero), quedarnos con la franja
-        // central-inferior donde está el pavimento.
-        // También recortamos un poco los laterales
-        // para centrar la vía.
-        const cropTop    = srcH * 0.30; // quitar 30% superior (cielo)
-        const cropBottom = srcH * 0.12; // quitar 12% inferior (salpicadero)
-        const cropSideX  = srcW * 0.08; // quitar 8% de cada lateral
-
-        const sx = cropSideX;
-        const sy = cropTop;
-        const sWidth  = srcW - cropSideX*2;
-        const sHeight = srcH - cropTop - cropBottom;
-
+        // Sin recorte — frame completo tal cual,
+        // reescalado solo si supera el techo de seguridad
         VIDEO_BUF.ctx.drawImage(
           VIDEO_BUF.video,
-          sx, sy, sWidth, sHeight,      // recorte origen
           0, 0,
           VIDEO_BUF.canvas.width,
-          VIDEO_BUF.canvas.height        // destino (960x720)
+          VIDEO_BUF.canvas.height
         );
 
         VIDEO_BUF.canvas.toBlob(blob=>{
@@ -4456,7 +4164,7 @@ async function startVideoBuffer(){
           while(VIDEO_BUF.frames.length>0&&
                 VIDEO_BUF.frames[0].ts<cutoff)
             VIDEO_BUF.frames.shift();
-        },'image/jpeg',0.92); // subir calidad de 0.85 a 0.92
+        },'image/jpeg',0.95); // máxima calidad razonable
       }catch(e){}
     },VIDEO_BUF.captureIntervalMs);
     VIDEO_BUF.capturing=true;
@@ -4595,9 +4303,9 @@ async function continueValidation(routeId){
       if(b)frameBlobs.push({blob:b,label:labels[i],diff:0});
     });
 
-    // Añadir el frame "best" anotado como opción
+    // Añadir el frame "best" natural como opción
     // adicional al final, no como sustituto
-    const bestHuman=await getImageBlob(event.id+'_best_human');
+    const bestHuman=await getImageBlob(event.id+'_best');
     if(bestHuman){
       frameBlobs.push({blob:bestHuman,label:'★ Mejor',diff:0});
     }
@@ -4718,7 +4426,7 @@ function renderGalleryItem(idx){
     // solo comprobar si el best ya está disponible
     // en IndexedDB y añadirlo
     if(ev._frameBlobs?.length>0){
-      const bestHuman=await getImageBlob(ev.id+'_best_human');
+      const bestHuman=await getImageBlob(ev.id+'_best');
       if(bestHuman){
         ev._frameBlobs.push({blob:bestHuman,label:'★ Mejor',diff:0});
       }
@@ -4736,7 +4444,7 @@ function renderGalleryItem(idx){
       if(b)fb.push({blob:b,label:labels[i],diff:0});
     });
 
-    const bestHuman=await getImageBlob(ev.id+'_best_human');
+    const bestHuman=await getImageBlob(ev.id+'_best');
     if(bestHuman){
       fb.push({blob:bestHuman,label:'★ Mejor',diff:0});
     }
